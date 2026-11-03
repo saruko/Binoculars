@@ -1,5 +1,7 @@
 # Binoculars 投稿前チェックツール
 
+日本語 | [English](README.en.md)
+
 [Binoculars](https://github.com/ahans30/Binoculars)（Hans et al., ICLR 2024）をもとに、投稿前の原稿を手元で確認するための機能を追加実装したものです。元の開発者による公式版ではありません。
 
 ## 元のBinocularsとの違い
