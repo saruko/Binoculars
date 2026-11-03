@@ -35,6 +35,10 @@ To run the similarity check on GitHub Actions, see the [guide](docs/github-actio
 2. On the first run, it creates a virtual environment (Python 3.14) and installs the libraries, including PyTorch for CUDA 12.8.
 3. When setup finishes, your browser opens `http://127.0.0.1:7860`.
 
+`start.bat` installs PyTorch first from the CUDA 12.8 index (`--index-url`). `requirements.txt` does not name a PyTorch index, because with `--extra-index-url` pip installs whichever version is higher, including a package of the same name on PyPI.
+
+Known unfixed vulnerability: gradio (including the latest 6.31.0) requires `pillow<13.0`, so Pillow stays on 12.x and cannot move to the fixed 13.0.0 (this includes a heap overflow in the bundled libopenjp2). Until gradio supports Pillow 13, do not load untrusted images or PDFs.
+
 ## Similarity check
 
 ### Registering sources
