@@ -35,6 +35,10 @@ GitHub Actions で類似度チェックを動かす場合は [手順書](docs/gi
 
 PyTorch は `start.bat` が CUDA 12.8 版の配布元（`--index-url`）から先に入れます。`requirements.txt` には PyTorch の配布元を書いていません（`--extra-index-url` にすると、同じ名前の PyPI のパッケージと比べて版の高い方が入るため）。
 
+インストールするパッケージの版は `constraints.txt` で固定しています。更新するときは、版を上げて `pip-audit` とテストを通してから、このファイルを置き換えてください。
+
+Binocularsスコアのモデルは、リポジトリに含まれるコードを実行せずに読み込みます（`trust_remote_code` は使いません）。独自のコードが必要なモデルは読み込めず、エラーになります。
+
 既知の未修正の脆弱性: gradio（最新の 6.31.0 も）が `pillow<13.0` を要求するため、Pillow は修正版の 13.0.0 に上げられず 12.x が入ります（同梱の libopenjp2 のヒープオーバーフローなど）。gradio が Pillow 13 に対応するまで、信頼できない画像・PDF は読み込ませないでください。
 
 ## 類似度チェック

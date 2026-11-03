@@ -22,8 +22,8 @@ call venv\Scripts\activate.bat
 
 echo [情報] 依存ライブラリの整合性を確認しています...
 python -m pip install --upgrade pip
-python -m pip install torch --index-url https://download.pytorch.org/whl/cu128
-python -m pip install -r requirements.txt
+python -m pip install torch --index-url https://download.pytorch.org/whl/cu128 -c constraints.txt
+python -m pip install -r requirements.txt -c constraints.txt
 if errorlevel 1 (
     echo [エラー] ライブラリのインストールに失敗しました。
     pause

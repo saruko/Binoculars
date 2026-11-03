@@ -1,4 +1,5 @@
 import csv
+import gzip
 import hashlib
 import os
 import re
@@ -983,3 +984,42 @@ def test_pmc_query_never_asks_past_the_eutilities_limit(tmp_path, monkeypatch):
     with Store(tmp_path / "fresh") as store:
         assert pmc.add_pmc_query(store, "x", progress=lambda _: None)["added"] == 3
     assert ranges == [(0, 2), (2, 1)]
+
+
+def test_model_loading_does_not_run_code_from_the_model_repository():
+    root = Path(__file__).resolve().parent.parent
+    for path in ("app.py", "binoculars/detector.py"):
+        assert "trust_remote_code" not in (root / path).read_text(encoding="utf-8")
+
+
+def test_installs_use_fixed_versions_and_actions_are_pinned_to_commits():
+    root = Path(__file__).resolve().parent.parent
+    pins = (root / "constraints.txt").read_text(encoding="utf-8")
+    assert re.search(r"^certifi==", pins, re.M) and re.search(r"^torch==", pins, re.M)
+
+    batch = (root / "start.bat").read_text(encoding="utf-8")
+    assert all("-c constraints.txt" in line for line in batch.splitlines() if "pip install" in line and "--upgrade pip" not in line)
+    for path in (root / ".github/workflows").glob("*.yml"):
+        text = path.read_text(encoding="utf-8")
+        assert "pip install -r requirements-ci.txt -c constraints.txt" in text
+        for action in re.findall(r"uses:\s*(\S+)", text):
+            assert re.fullmatch(r"[\w./-]+@[0-9a-f]{40}", action), action
+
+
+def test_pubmed_parser_does_not_expand_xml_entities(tmp_path):
+    secret = tmp_path / "secret.txt"
+    secret.write_text("LEAKED", encoding="utf-8")
+    xml = (
+        f'<!DOCTYPE PubmedArticleSet [<!ENTITY inner "EXPANDED"><!ENTITY outer SYSTEM "{secret.as_uri()}">]>'
+        "<PubmedArticleSet><PubmedArticle><MedlineCitation><PMID>1</PMID><Article>"
+        "<ArticleTitle>Title &#945; &amp; more</ArticleTitle>"
+        "<Abstract><AbstractText>Body &inner; &outer; text.</AbstractText></Abstract>"
+        "</Article></MedlineCitation></PubmedArticle></PubmedArticleSet>"
+    )
+    path = tmp_path / "x.xml.gz"
+    with gzip.open(path, "wt", encoding="utf-8") as f:
+        f.write(xml)
+    record = next(pubmed.iter_articles(path))
+    assert record["title"] == "Title \u03b1 & more"
+    assert "Body" in record["text"]
+    assert "EXPANDED" not in record["text"] and "LEAKED" not in record["text"]

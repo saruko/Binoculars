@@ -31,8 +31,8 @@ class BinocularsDetector:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.dtype = torch.bfloat16 if self.device == "cuda" else torch.float32
 
-        self.tokenizer = AutoTokenizer.from_pretrained(observer_path, trust_remote_code=True)
-        performer_tokenizer = AutoTokenizer.from_pretrained(performer_path, trust_remote_code=True)
+        self.tokenizer = AutoTokenizer.from_pretrained(observer_path)
+        performer_tokenizer = AutoTokenizer.from_pretrained(performer_path)
         if self.tokenizer.get_vocab() != performer_tokenizer.get_vocab():
             raise ValueError("Observer と Performer のトークナイザー（語彙）が一致しません。同一ファミリーのモデルを指定してください。")
         if self.tokenizer.pad_token is None:
@@ -40,10 +40,10 @@ class BinocularsDetector:
 
         # device_map="auto" だと複数GPU環境で2モデルが別デバイスに載る可能性があるため、明示的に1デバイスへ配置する
         self.observer = AutoModelForCausalLM.from_pretrained(
-            observer_path, dtype=self.dtype, trust_remote_code=True
+            observer_path, dtype=self.dtype
         ).to(self.device).eval()
         self.performer = AutoModelForCausalLM.from_pretrained(
-            performer_path, dtype=self.dtype, trust_remote_code=True
+            performer_path, dtype=self.dtype
         ).to(self.device).eval()
 
     def _token_spans(self, ids, losses):

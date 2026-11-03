@@ -49,7 +49,7 @@ def fetch_random(client, term: str, rng: random.Random, batches: int = 6) -> lis
             "db": "pubmed", "query_key": found["querykey"], "WebEnv": found["webenv"],
             "retstart": start, "retmax": FETCH_POOL, "retmode": "xml",
         })
-        for _, element in etree.iterparse(io.BytesIO(response.content), tag="PubmedArticle", huge_tree=True):
+        for _, element in etree.iterparse(io.BytesIO(response.content), tag="PubmedArticle", huge_tree=True, resolve_entities=False):
             record = parse_article(element)
             element.clear()
             if record:

@@ -22,18 +22,20 @@ jobs:
       SIMCHECK_DATA_DIR: ${{ github.workspace }}/data/simcheck
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: "3.14"
           cache: pip
-          cache-dependency-path: requirements-ci.txt
+          cache-dependency-path: |
+            requirements-ci.txt
+            constraints.txt
 
       - name: 依存関係を導入
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements-ci.txt
+          pip install -r requirements-ci.txt -c constraints.txt
 
       # 検索結果は入れ替わるので、毎回作り直して古い指紋を残さない
       - name: 照合先を取り込む

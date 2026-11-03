@@ -37,6 +37,10 @@ To run the similarity check on GitHub Actions, see the [guide](docs/github-actio
 
 `start.bat` installs PyTorch first from the CUDA 12.8 index (`--index-url`). `requirements.txt` does not name a PyTorch index, because with `--extra-index-url` pip installs whichever version is higher, including a package of the same name on PyPI.
 
+Package versions are fixed in `constraints.txt`. To update them, raise the versions, run `pip-audit` and the tests, and then replace this file.
+
+The Binoculars score models load without running code from the model repository (`trust_remote_code` is not used). A model that needs its own code will not load and shows an error.
+
 Known unfixed vulnerability: gradio (including the latest 6.31.0) requires `pillow<13.0`, so Pillow stays on 12.x and cannot move to the fixed 13.0.0 (this includes a heap overflow in the bundled libopenjp2). Until gradio supports Pillow 13, do not load untrusted images or PDFs.
 
 ## Similarity check

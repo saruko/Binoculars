@@ -131,7 +131,7 @@ def parse_article(article) -> dict | None:
 
 def iter_articles(path: Path):
     with gzip.open(path, "rb") as f:
-        for _, element in etree.iterparse(f, tag="PubmedArticle", huge_tree=True):
+        for _, element in etree.iterparse(f, tag="PubmedArticle", huge_tree=True, resolve_entities=False):
             record = parse_article(element)
             if record:
                 yield record
@@ -212,7 +212,7 @@ def add_pubmed_query(store: Store, term: str, progress=print) -> dict:
                 # retstart+retmax が 9,999 を超えると 400 が返る
                 "retstart": start, "retmax": min(QUERY_BATCH, limit - start), "retmode": "xml",
             })
-            for _, element in etree.iterparse(io.BytesIO(response.content), tag="PubmedArticle", huge_tree=True):
+            for _, element in etree.iterparse(io.BytesIO(response.content), tag="PubmedArticle", huge_tree=True, resolve_entities=False):
                 record = parse_article(element)
                 element.clear()
                 if record:
