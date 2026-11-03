@@ -1,6 +1,8 @@
 import json
+import math
 import os
 import re
+import shutil
 from pathlib import Path
 
 import faiss
@@ -21,6 +23,12 @@ CROSS_LANGUAGE_THRESHOLD = 0.75
 # 量子化した索引でも1文書あたり約10文で約10KBになるので、件数を絞る
 MAX_PUBMED_DOCS = 100_000
 CROSS_SEARCH_K = 5
+# 文数がこれを超えたら全件を調べず、近い区画だけを調べる索引にする
+IVF_MIN_CHUNKS = 2_000_000
+IVF_TRAIN_PER_LIST = 39
+NPROBE = 128
+ENCODE_CHUNKS = 20_000
+PART_CHUNKS = 200_000
 
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9(“\"぀-鿿])|(?<=[。！？])|\n\s*\n|\f")
 _JAPANESE = re.compile(r"[぀-ヿ㐀-鿿]")
@@ -163,6 +171,7 @@ def build_pubmed_index(store: Store, root: str | Path = DATA_DIR / "semantic_pub
     """PubMed抄録の文単位の索引を作る。全件は容量の都合で扱えないので、先に登録した文献から max_docs 件に限る。"""
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
+    shutil.rmtree(root / "parts", ignore_errors=True)
     doc_ids = store.iter_doc_ids("pubmed")[:max_docs]
     index = faiss.IndexScalarQuantizer(EMBED_DIM, faiss.ScalarQuantizer.QT_8bit, faiss.METRIC_INNER_PRODUCT)
     chunks = _add_documents(store, index, doc_ids, progress)
@@ -183,17 +192,103 @@ def matching_pubmed_docs(store: Store, pattern: str) -> list[int]:
         ]
 
 
+def _save_vectors(parts: Path, number: int, chunks, vectors: np.ndarray):
+    tmp = parts / f"{number:05d}.tmp"
+    with open(tmp, "wb") as f:
+        np.savez(f, chunks=np.array(chunks, dtype=np.int64).reshape(-1, 3), vectors=vectors.astype(np.float16))
+    os.replace(tmp, parts / f"{number:05d}.npz")
+
+
+def _encode_to_parts(store: Store, doc_ids: list[int], parts: Path, number: int, progress) -> int:
+    """文の埋め込みを小分けに保存する。止まっても、保存済みの文献は次回に作り直さない。"""
+    added, chunks, texts, vector_parts = 0, [], [], []
+
+    def encode_pending():
+        if texts:
+            vector_parts.append(encode(texts))
+            texts.clear()
+
+    def save():
+        nonlocal number, added, chunks
+        encode_pending()
+        if chunks:
+            number += 1
+            _save_vectors(parts, number, chunks, np.concatenate(vector_parts))
+            added += len(chunks)
+            chunks = []
+            vector_parts.clear()
+
+    for done, i in enumerate(range(0, len(doc_ids), 500), 1):
+        docs = store.get_docs(doc_ids[i:i + 500])
+        for doc_id, doc in docs.items():
+            for s, e in sentence_spans(doc.text):
+                chunks.append((doc_id, s, e))
+                texts.append(doc.text[s:e])
+        # 長さの近い文をまとめるほど符号化が速いので、ある程度ためてから渡す
+        if len(texts) >= ENCODE_CHUNKS:
+            encode_pending()
+        if len(chunks) >= PART_CHUNKS:
+            save()
+        if done % 200 == 0:
+            progress(f"  {min(i + 500, len(doc_ids)):,}/{len(doc_ids):,} 文書, {added + len(chunks):,} 文")
+    save()
+    return added
+
+
+def _new_index(n_chunks: int):
+    if n_chunks < IVF_MIN_CHUNKS:
+        return faiss.IndexScalarQuantizer(EMBED_DIM, faiss.ScalarQuantizer.QT_8bit, faiss.METRIC_INNER_PRODUCT)
+    nlist = max(1, min(4 * int(math.sqrt(n_chunks)), n_chunks // IVF_TRAIN_PER_LIST))
+    # 差分を符号化しないので、類似度の値は全件を調べる索引と揃う
+    index = faiss.IndexIVFScalarQuantizer(
+        faiss.IndexFlatIP(EMBED_DIM), EMBED_DIM, nlist, faiss.ScalarQuantizer.QT_8bit, faiss.METRIC_INNER_PRODUCT, False,
+    )
+    index.nprobe = min(NPROBE, nlist)
+    return index
+
+
+def _build_from_parts(root: Path, progress) -> int:
+    paths = sorted((root / "parts").glob("*.npz"))
+    sizes = [np.load(path)["chunks"].shape[0] for path in paths]
+    total = sum(sizes)
+    index = _new_index(total)
+    wanted = index.nlist * IVF_TRAIN_PER_LIST if isinstance(index, faiss.IndexIVF) else 100_000
+    rng = np.random.default_rng(0)
+    sample = []
+    for path, size in zip(paths, sizes):
+        count = min(size, max(1, wanted * size // max(total, 1)))
+        rows = np.sort(rng.choice(size, count, replace=False))
+        sample.append(np.load(path)["vectors"][rows].astype(np.float32))
+    progress(f"  学習 {sum(map(len, sample)):,} 文")
+    index.train(np.concatenate(sample))
+    del sample
+    chunks = []
+    for done, path in enumerate(paths, 1):
+        with np.load(path) as part:
+            index.add(part["vectors"].astype(np.float32))
+            chunks.append(part["chunks"])
+        progress(f"  追加 {done}/{len(paths)}")
+    _write_part(root, index, np.concatenate(chunks))
+    return total
+
+
 def extend_index(store: Store, doc_ids: list[int], root: str | Path = DATA_DIR / "semantic_pubmed", progress=print) -> dict:
-    """言い換え検索の索引に文献を加える。索引にある文献は作り直さない。"""
+    """言い換え検索の索引に文献を加える。埋め込みを作り直すのは、まだ保存していない文献だけ。"""
     root = Path(root)
-    index = faiss.read_index(str(root / "index.faiss"))
-    old = np.load(root / "chunks.npy")
-    known = set(np.unique(old[:, 0]).tolist())
+    parts = root / "parts"
+    parts.mkdir(exist_ok=True)
+    if not any(parts.glob("*.npz")):
+        # 今の索引の中身を最初の部分にする。量子化した値から戻すので、符号化し直すより精度はわずかに落ちる
+        index = faiss.read_index(str(root / "index.faiss"))
+        _save_vectors(parts, 0, np.load(root / "chunks.npy"), index.reconstruct_n(0, index.ntotal))
+    paths = sorted(parts.glob("*.npz"))
+    known = set()
+    for path in paths:
+        known.update(np.unique(np.load(path)["chunks"][:, 0]).tolist())
     new_ids = [doc_id for doc_id in doc_ids if doc_id not in known]
-    progress(f"  追加 {len(new_ids):,} 文書（索引にある {len(doc_ids) - len(new_ids):,} 文書を除く）")
-    chunks = _add_documents(store, index, new_ids, progress)
-    _write_part(root, index, np.concatenate([old, np.array(chunks, dtype=np.int64).reshape(-1, 3)]))
-    return {"docs": len(new_ids), "chunks": len(chunks), "total_chunks": len(old) + len(chunks)}
+    progress(f"  追加 {len(new_ids):,} 文書（保存済みの {len(doc_ids) - len(new_ids):,} 文書を除く）")
+    added = _encode_to_parts(store, new_ids, parts, int(paths[-1].stem), progress)
+    return {"docs": len(new_ids), "chunks": added, "total_chunks": _build_from_parts(root, progress)}
 
 
 class SemanticIndex:

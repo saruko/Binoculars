@@ -168,6 +168,9 @@ def main():
     parser.add_argument("--no-rerank", action="store_true", help="言い換えの候補を再評価しない")
     parser.add_argument("--rerank-min-gain", type=float, default=DEFAULT_MIN_GAIN)
     parser.add_argument("--no-retraction", action="store_true")
+    parser.add_argument("--rare-df", type=int, default=CheckOptions().candidate_rare_df)
+    parser.add_argument("--region-tokens", type=int, default=CheckOptions().candidate_region_tokens)
+    parser.add_argument("--per-region", type=int, default=CheckOptions().candidates_per_region)
     parser.add_argument("--tag", help="結果のファイル名に付ける名前（設定の比較用）")
     parser.add_argument("--set-baseline", action="store_true", help="この結果を以後の比較の基準にする")
     args = parser.parse_args()
@@ -197,7 +200,8 @@ def main():
                         print(f"{condition.name}/{stratum}: 対象なし（書き換え文が未生成）", flush=True)
                         continue
                     options = CheckOptions(
-                        use_semantic=condition.semantic, min_words=args.min_words,
+                        use_semantic=condition.semantic, min_words=args.min_words, candidate_rare_df=args.rare_df,
+                        candidate_region_tokens=args.region_tokens, candidates_per_region=args.per_region,
                         semantic_threshold=args.semantic_threshold,
                         use_rerank=not args.no_rerank, rerank_min_gain=args.rerank_min_gain,
                     )

@@ -32,6 +32,9 @@ class CheckOptions:
     exclude_preprints: bool = False
     exclude_common: bool = False
     min_words: int = 8
+    candidate_rare_df: int = 30
+    candidate_region_tokens: int = CANDIDATE_REGION_TOKENS
+    candidates_per_region: int = CANDIDATES_PER_REGION
     max_candidates: int = 200
     use_semantic: bool = True
     semantic_threshold: float = DEFAULT_THRESHOLD
@@ -161,9 +164,10 @@ def check_document(path: str | Path, store: Store, options: CheckOptions | None 
     )
     region_of: dict[int, int] = {}
     for h, i in q_shingles:
-        region_of.setdefault(h, i // CANDIDATE_REGION_TOKENS)
+        region_of.setdefault(h, i // options.candidate_region_tokens)
     candidates = store.lookup(
-        hashes, options.max_candidates + len(excluded_ids), region_of=region_of, per_region=CANDIDATES_PER_REGION,
+        hashes, options.max_candidates + len(excluded_ids), region_of=region_of, per_region=options.candidates_per_region,
+        rare_df=options.candidate_rare_df,
     )
     candidate_ids = [doc_id for doc_id, _ in candidates if doc_id not in excluded_ids]
     docs = store.get_docs(candidate_ids)

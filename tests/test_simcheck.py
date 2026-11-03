@@ -315,6 +315,23 @@ def test_common_fingerprints_are_ignored_for_candidates(tmp_path):
         assert len(s.lookup(fingerprints(SOURCE_EN), 10, max_df=10)) == 5
 
 
+def test_rare_fingerprint_keeps_a_source_in_the_candidates(tmp_path):
+    def add(s, ext_id, hashes):
+        row = DocRow(ext_id, "pubmed", ext_id, "2024", None, False, {}, compress_text("text"))
+        s.add_batch(ext_id.replace(":", "_"), "pubmed", [row], np.array(hashes, dtype=np.uint64),
+                    np.zeros(len(hashes), dtype=np.uint32))
+
+    common = list(range(1, 11))
+    with Store(tmp_path / "index") as s:
+        add(s, "pmid:1", common)
+        add(s, "pmid:2", common)
+        add(s, "pmid:3", [99])
+        query = [*common, 99]
+        rare_doc = next(d for d, _ in s.lookup([99], 1))
+        assert rare_doc not in dict(s.lookup(query, 1))
+        assert rare_doc in dict(s.lookup(query, 1, rare_df=1))
+
+
 def test_report_escapes_html(store, tmp_path):
     report = run(store, tmp_path, "<script>alert(1)</script> " + SOURCE_EN)
     rendered = render_html(report, standalone=True)
@@ -634,15 +651,15 @@ def manuscript_with_refs(lines):
 
 
 def test_citation_overlap_flags_shared_reference_list(tmp_path):
-    refs = [f"doi:10.1000/ref.{i}" for i in range(8)]
+    refs = [f"doi:10.1000/ref.{i}" for i in range(12)]
     with Store(tmp_path / "index") as s:
         source = add_cited_doc(s, "pmid:1", "A source article about glaucoma treatment outcomes in adults", refs)
-        add_cited_doc(s, "pmid:2", "An unrelated article about something else entirely here", [f"doi:10.1000/x.{i}" for i in range(8)])
-        text = manuscript_with_refs([f"Author A. Title. doi:10.1000/ref.{i}" for i in range(8)])
+        add_cited_doc(s, "pmid:2", "An unrelated article about something else entirely here", [f"doi:10.1000/x.{i}" for i in range(12)])
+        text = manuscript_with_refs([f"Author A. Title. doi:10.1000/ref.{i}" for i in range(12)])
         flags, notices = check_citations(text, s)
         assert [f.kind for f in flags] == ["引用の重なり"]
         assert flags[0].count == 1
-        assert "共通 8 件" in flags[0].examples[0] and "順序の一致 100%" in flags[0].examples[0]
+        assert "共通 12 件" in flags[0].examples[0] and "順序の一致 100%" in flags[0].examples[0]
         assert check_citations(text, s, {source}) == ([], [])
 
 
@@ -655,6 +672,8 @@ def test_citation_order_and_threshold(tmp_path):
         reordered = manuscript_with_refs([f"A. T. doi:10.1000/ref.{i}" for i in reversed(range(20))])
         result = coupled_documents(reference_keys(reordered, s), s)[0]
         assert result["coupling"] == 1.0 and result["order_share"] == pytest.approx(0.05)
+        # 文献が同じでも順序が違えば、同じ分野の論文どうしと区別できないのでフラッグにしない
+        assert check_citations(reordered, s)[0] == []
 
 
 def test_citation_titles_resolve_references_without_doi(tmp_path):
@@ -1092,3 +1111,57 @@ def test_add_library_releases_results_of_processed_files(tmp_path, monkeypatch):
     assert result["added"] == 4
     # 登録中の文献の分だけが残り、登録済みの結果はたまらない
     assert store.alive == [1] * 4
+
+
+def _one_hot_encode(texts):
+    vectors = np.zeros((len(texts), semantic.EMBED_DIM), dtype=np.float32)
+    for i, text in enumerate(texts):
+        vectors[i, int(hashlib.sha256(text.encode()).hexdigest(), 16) % semantic.EMBED_DIM] = 1.0
+    return vectors
+
+
+def test_extending_the_semantic_index_resumes_without_encoding_saved_documents(tmp_path, monkeypatch):
+    calls = []
+
+    def counting_encode(texts):
+        calls.extend(texts)
+        return _one_hot_encode(texts)
+
+    monkeypatch.setattr(semantic, "encode", counting_encode)
+    with Store(tmp_path / "fresh") as store:
+        add_doc(store, "pmid:1", SOURCE_EN, name="a")
+        add_doc(store, "pmid:2", UNRELATED, name="b")
+        add_doc(store, "pmc:PMC3", SOURCE_EN + " " + UNRELATED, source="pmc", name="c")
+        root = tmp_path / "part"
+        semantic.build_pubmed_index(store, root, max_docs=1)
+        wanted = store.iter_doc_ids("pubmed") + store.iter_doc_ids("pmc")
+        semantic.extend_index(store, wanted[:2], root, progress=lambda _: None)
+        calls.clear()
+
+        # 前回の続き。保存済みの文献は符号化しない
+        result = semantic.extend_index(store, wanted, root, progress=lambda _: None)
+        pmc_sentences = len(semantic.sentence_spans(SOURCE_EN + " " + UNRELATED))
+        assert len(calls) == pmc_sentences and result["docs"] == 1
+        chunks = np.load(root / "chunks.npy")
+        assert set(chunks[:, 0].tolist()) == set(wanted)
+        assert semantic.faiss.read_index(str(root / "index.faiss")).ntotal == len(chunks)
+
+
+def test_large_semantic_index_searches_only_nearby_lists_with_the_same_scores(tmp_path, monkeypatch):
+    rng = np.random.default_rng(0)
+    vectors = rng.normal(size=(2000, semantic.EMBED_DIM)).astype(np.float32)
+    vectors /= np.linalg.norm(vectors, axis=1, keepdims=True)
+    root = tmp_path / "part"
+    (root / "parts").mkdir(parents=True)
+    chunks = [(i, 0, 10) for i in range(len(vectors))]
+    semantic._save_vectors(root / "parts", 0, chunks, vectors)
+    monkeypatch.setattr(semantic, "IVF_MIN_CHUNKS", 1000)
+    monkeypatch.setattr(semantic, "NPROBE", 4)
+
+    assert semantic._build_from_parts(root, lambda _: None) == 2000
+    index = semantic.faiss.read_index(str(root / "index.faiss"))
+    assert index.ntotal == 2000 and semantic.faiss.extract_index_ivf(index).nprobe == 4
+    scores, ids = index.search(vectors[:50], 1)
+    assert (ids[:, 0] == np.arange(50)).mean() >= 0.9
+    # 同じ文なら、量子化の誤差を除いて類似度は1になる
+    assert np.abs(scores[ids[:, 0] == np.arange(50), 0] - 1).max() < 0.03

@@ -15,9 +15,10 @@ from .textnorm import tokenize
 
 TITLE_KEY_TOKENS = 6
 MIN_MANUSCRIPT_REFS = 5
-MIN_SHARED = 8
+MIN_SHARED = 10
 # 同じ分野の論文どうしの重なりより上に置いた値（evaluation/detection/results.md）
-MIN_COUPLING = 0.6
+MIN_COUPLING = 0.8
+MIN_ORDER_SHARE = 0.7
 MAX_EXAMPLES = 5
 _PMID_RE = re.compile(r"\b(?:PMID|PubMed(?:\s+ID)?)\s*:?\s*(\d{4,9})\b", re.IGNORECASE)
 _SQL_BATCH = 500
@@ -312,7 +313,10 @@ def check_citations(text: str, store: Store, excluded_ids: set[int] = frozenset(
         return [], [
             f"参考文献のうち照合先で特定できたのが {len(keys)} 件だけなので、引用パターンは確認していません。"
         ]
-    coupled = [r for r in coupled_documents(keys, store, excluded_ids) if r["coupling"] >= MIN_COUPLING]
+    coupled = [
+        r for r in coupled_documents(keys, store, excluded_ids)
+        if r["coupling"] >= MIN_COUPLING and r["order_share"] >= MIN_ORDER_SHARE
+    ]
     if not coupled:
         return [], []
     docs = store.get_docs([r["doc_id"] for r in coupled[:MAX_EXAMPLES]])

@@ -9,12 +9,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.stdout.reconfigure(encoding="utf-8")
-from simcheck.citations import MIN_MANUSCRIPT_REFS, _canonical_refs, _resolve_pmid, coupled_documents
+from simcheck.citations import MIN_MANUSCRIPT_REFS, MIN_ORDER_SHARE, _canonical_refs, _resolve_pmid, coupled_documents
 from simcheck.store import Store
 
 N_SAMPLE = 3000
-COUPLINGS = (0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8)
-MIN_SHARED = (5, 8, 10)
+COUPLINGS = (0.6, 0.7, 0.8, 0.9)
+MIN_SHARED = (10, 15, 20)
 OUT = Path(__file__).parent / "calibrate_citations.json"
 
 
@@ -34,12 +34,15 @@ def main():
         tops = []
         for doc_id in sample:
             keys = _canonical_refs(json.loads(refs_of[doc_id]), lambda pmid: _resolve_pmid(pmid, store))
-            for found in coupled_documents(keys, store, {doc_id})[:1]:
+            for found in coupled_documents(keys, store, {doc_id}):
                 tops.append({"doc": doc_id, "n_keys": len(keys), **found})
         grid = {}
         for min_shared in MIN_SHARED:
             for coupling in COUPLINGS:
-                hit = sum(t["coupling"] >= coupling and t["shared"] >= min_shared for t in tops)
+                hit = len({
+                    t["doc"] for t in tops
+                    if t["coupling"] >= coupling and t["shared"] >= min_shared and t["order_share"] >= MIN_ORDER_SHARE
+                })
                 grid[f"shared>={min_shared},coupling>={coupling}"] = round(hit / max(len(sample), 1), 4)
         summary["share_of_docs_flagged"] = grid
         # 上位の組は、同じ論文の重複か本当に近い論文かを読んで確かめる

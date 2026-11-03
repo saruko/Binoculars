@@ -1,0 +1,1713 @@
+{
+ "split": "dev",
+ "finished_at": "2026-11-04 00:46",
+ "min_words": 8,
+ "semantic_threshold": 0.85,
+ "use_rerank": true,
+ "rerank_min_gain": 0.6,
+ "code_hash": "950624a01a51",
+ "code_changed_during_run": false,
+ "index_stats": {
+  "docs": {
+   "library": 665,
+   "pmc": 142932,
+   "pubmed": 28400874
+  },
+  "segments": 1,
+  "postings": 1878204950,
+  "disk_gb": 95.669
+ },
+ "cells": {
+  "verbatim_8/pubmed": {
+   "docs": 40,
+   "n": 200,
+   "detected": 157,
+   "detected_rate": 0.785,
+   "detected_ci": [
+    0.722976925984516,
+    0.8362812378141751
+   ],
+   "correct_source_rate": 0.73,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 0.785,
+   "mean_coverage": 0.784375,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11085332415661113,
+   "precision": 0.11659589525831564,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.98312007188797,
+   "condition": "verbatim_8",
+   "group": "そのままの転用",
+   "stratum": "pubmed",
+   "semantic": false,
+   "mean_score": 0.12843489589591348
+  },
+  "verbatim_8/library": {
+   "docs": 40,
+   "n": 200,
+   "detected": 159,
+   "detected_rate": 0.795,
+   "detected_ci": [
+    0.7337430189543738,
+    0.8451382383109382
+   ],
+   "correct_source_rate": 0.7,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 0.795,
+   "mean_coverage": 0.794,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11070901279930731,
+   "precision": 0.11680835990081474,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8588683068752289,
+   "condition": "verbatim_8",
+   "group": "そのままの転用",
+   "stratum": "library",
+   "semantic": false,
+   "mean_score": 0.12844724935458657
+  },
+  "verbatim_10/pubmed": {
+   "docs": 40,
+   "n": 200,
+   "detected": 190,
+   "detected_rate": 0.95,
+   "detected_ci": [
+    0.9104218514713903,
+    0.972617354526543
+   ],
+   "correct_source_rate": 0.905,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 0.95,
+   "mean_coverage": 0.9465833333333333,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11107534162938623,
+   "precision": 0.16449565798263194,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8269454956054687,
+   "condition": "verbatim_10",
+   "group": "そのままの転用",
+   "stratum": "pubmed",
+   "semantic": false,
+   "mean_score": 0.13567375231725548
+  },
+  "verbatim_10/library": {
+   "docs": 40,
+   "n": 200,
+   "detected": 193,
+   "detected_rate": 0.965,
+   "detected_ci": [
+    0.9295293881131225,
+    0.9829444580847418
+   ],
+   "correct_source_rate": 0.87,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 0.965,
+   "mean_coverage": 0.9615,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11095323201935993,
+   "precision": 0.1659712950600801,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8617921233177185,
+   "condition": "verbatim_10",
+   "group": "そのままの転用",
+   "stratum": "library",
+   "semantic": false,
+   "mean_score": 0.13577567977194593
+  },
+  "verbatim_12/pubmed": {
+   "docs": 40,
+   "n": 200,
+   "detected": 197,
+   "detected_rate": 0.985,
+   "detected_ci": [
+    0.9568342708846106,
+    0.9948857622464952
+   ],
+   "correct_source_rate": 0.945,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 0.985,
+   "mean_coverage": 0.9821474358974359,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11087552590388863,
+   "precision": 0.19691243869100267,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8205242693424225,
+   "condition": "verbatim_12",
+   "group": "そのままの転用",
+   "stratum": "pubmed",
+   "semantic": false,
+   "mean_score": 0.1403127464383062
+  },
+  "verbatim_12/library": {
+   "docs": 40,
+   "n": 200,
+   "detected": 196,
+   "detected_rate": 0.98,
+   "detected_ci": [
+    0.949712912759955,
+    0.9921955736378406
+   ],
+   "correct_source_rate": 0.885,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 0.98,
+   "mean_coverage": 0.9775,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11095323201935993,
+   "precision": 0.19511998711547754,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8609752118587494,
+   "condition": "verbatim_12",
+   "group": "そのままの転用",
+   "stratum": "library",
+   "semantic": false,
+   "mean_score": 0.14003696506001265
+  },
+  "verbatim_15/pubmed": {
+   "docs": 40,
+   "n": 200,
+   "detected": 199,
+   "detected_rate": 0.995,
+   "detected_ci": [
+    0.972226295303572,
+    0.9991168312941546
+   ],
+   "correct_source_rate": 0.98,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 0.995,
+   "mean_coverage": 0.9940208333333334,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11139726696491013,
+   "precision": 0.2358361254949741,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8398974895477295,
+   "condition": "verbatim_15",
+   "group": "そのままの転用",
+   "stratum": "pubmed",
+   "semantic": false,
+   "mean_score": 0.1471672491013727
+  },
+  "verbatim_15/library": {
+   "docs": 40,
+   "n": 200,
+   "detected": 200,
+   "detected_rate": 1.0,
+   "detected_ci": [
+    0.9811546733310369,
+    0.9999999999999999
+   ],
+   "correct_source_rate": 0.915,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 1.0,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11131956084943885,
+   "precision": 0.23584546216566335,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8895960807800293,
+   "condition": "verbatim_15",
+   "group": "そのままの転用",
+   "stratum": "library",
+   "semantic": false,
+   "mean_score": 0.14706166406219862
+  },
+  "verbatim_20/pubmed": {
+   "docs": 40,
+   "n": 200,
+   "detected": 200,
+   "detected_rate": 1.0,
+   "detected_ci": [
+    0.9811546733310369,
+    0.9999999999999999
+   ],
+   "correct_source_rate": 1.0,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 1.0,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11083112240933361,
+   "precision": 0.2935682445340692,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.881992620229721,
+   "condition": "verbatim_20",
+   "group": "そのままの転用",
+   "stratum": "pubmed",
+   "semantic": false,
+   "mean_score": 0.15674488741032735
+  },
+  "verbatim_20/library": {
+   "docs": 40,
+   "n": 200,
+   "detected": 200,
+   "detected_rate": 1.0,
+   "detected_ci": [
+    0.9811546733310369,
+    0.9999999999999999
+   ],
+   "correct_source_rate": 0.925,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 1.0,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11103093813483121,
+   "precision": 0.29314487632508834,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8580605447292328,
+   "condition": "verbatim_20",
+   "group": "そのままの転用",
+   "stratum": "library",
+   "semantic": false,
+   "mean_score": 0.15688862816162846
+  },
+  "verbatim_30/pubmed": {
+   "docs": 40,
+   "n": 200,
+   "detected": 200,
+   "detected_rate": 1.0,
+   "detected_ci": [
+    0.9811546733310369,
+    0.9999999999999999
+   ],
+   "correct_source_rate": 1.0,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 1.0,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11079781978841735,
+   "precision": 0.3848761247380747,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8320788562297821,
+   "condition": "verbatim_30",
+   "group": "そのままの転用",
+   "stratum": "pubmed",
+   "semantic": false,
+   "mean_score": 0.17579873277931743
+  },
+  "verbatim_30/library": {
+   "docs": 40,
+   "n": 200,
+   "detected": 200,
+   "detected_rate": 1.0,
+   "detected_ci": [
+    0.9811546733310369,
+    0.9999999999999999
+   ],
+   "correct_source_rate": 0.93,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 1.0,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11060910493655851,
+   "precision": 0.3838352606517841,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.9035431265830993,
+   "condition": "verbatim_30",
+   "group": "そのままの転用",
+   "stratum": "library",
+   "semantic": false,
+   "mean_score": 0.17520544636553143
+  },
+  "verbatim_60/pubmed": {
+   "docs": 40,
+   "n": 200,
+   "detected": 200,
+   "detected_rate": 1.0,
+   "detected_ci": [
+    0.9811546733310369,
+    0.9999999999999999
+   ],
+   "correct_source_rate": 1.0,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 1.0,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11079781978841735,
+   "precision": 0.557030001775253,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8627477288246155,
+   "condition": "verbatim_60",
+   "group": "そのままの転用",
+   "stratum": "pubmed",
+   "semantic": false,
+   "mean_score": 0.2287556655595869
+  },
+  "verbatim_60/library": {
+   "docs": 40,
+   "n": 200,
+   "detected": 200,
+   "detected_rate": 1.0,
+   "detected_ci": [
+    0.9811546733310369,
+    0.9999999999999999
+   ],
+   "correct_source_rate": 0.935,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 0.9999180327868852,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11082002153569485,
+   "precision": 0.554866901502653,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.9920285463333129,
+   "condition": "verbatim_60",
+   "group": "そのままの転用",
+   "stratum": "library",
+   "semantic": false,
+   "mean_score": 0.22801259890385617
+  },
+  "drop_every_5/pubmed": {
+   "docs": 40,
+   "n": 200,
+   "detected": 9,
+   "detected_rate": 0.045,
+   "detected_ci": [
+    0.02385254288504434,
+    0.08329670438371192
+   ],
+   "correct_source_rate": 0.045,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 0.045,
+   "mean_coverage": 0.10734836101203035,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11088662677752739,
+   "precision": 0.10130454340980657,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8536060929298401,
+   "condition": "drop_every_5",
+   "group": "語の編集",
+   "stratum": "pubmed",
+   "semantic": false,
+   "mean_score": 0.11464178989857468
+  },
+  "drop_every_5/library": {
+   "docs": 40,
+   "n": 200,
+   "detected": 8,
+   "detected_rate": 0.04,
+   "detected_ci": [
+    0.020405631961019504,
+    0.0769320685744264
+   ],
+   "correct_source_rate": 0.04,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 0.04,
+   "mean_coverage": 0.09214410359253186,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11097543376663743,
+   "precision": 0.08853026987600292,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8701303482055665,
+   "condition": "drop_every_5",
+   "group": "語の編集",
+   "stratum": "library",
+   "semantic": false,
+   "mean_score": 0.11323727165436673
+  },
+  "drop_every_8/pubmed": {
+   "docs": 40,
+   "n": 200,
+   "detected": 199,
+   "detected_rate": 0.995,
+   "detected_ci": [
+    0.972226295303572,
+    0.9991168312941546
+   ],
+   "correct_source_rate": 0.995,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 0.995,
+   "mean_coverage": 0.93691247697871,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11104203900846997,
+   "precision": 0.509656862745098,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8388629257678986,
+   "condition": "drop_every_8",
+   "group": "語の編集",
+   "stratum": "pubmed",
+   "semantic": false,
+   "mean_score": 0.21012977738694533
+  },
+  "drop_every_8/library": {
+   "docs": 40,
+   "n": 200,
+   "detected": 200,
+   "detected_rate": 1.0,
+   "detected_ci": [
+    0.9811546733310369,
+    0.9999999999999999
+   ],
+   "correct_source_rate": 0.92,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 0.9214751797023437,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11084222328297237,
+   "precision": 0.5036289520779479,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.9375203311443329,
+   "condition": "drop_every_8",
+   "group": "語の編集",
+   "stratum": "library",
+   "semantic": false,
+   "mean_score": 0.2069661865600608
+  },
+  "drop_every_12/pubmed": {
+   "docs": 40,
+   "n": 200,
+   "detected": 200,
+   "detected_rate": 1.0,
+   "detected_ci": [
+    0.9811546733310369,
+    0.9999999999999999
+   ],
+   "correct_source_rate": 1.0,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 1.0,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11170809142679529,
+   "precision": 0.5335156684591137,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8587293326854706,
+   "condition": "drop_every_12",
+   "group": "語の編集",
+   "stratum": "pubmed",
+   "semantic": false,
+   "mean_score": 0.22130697066461966
+  },
+  "drop_every_12/library": {
+   "docs": 40,
+   "n": 200,
+   "detected": 200,
+   "detected_rate": 1.0,
+   "detected_ci": [
+    0.9811546733310369,
+    0.9999999999999999
+   ],
+   "correct_source_rate": 0.93,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 1.0,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11080892066205611,
+   "precision": 0.5332678730069669,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.9479824841022492,
+   "condition": "drop_every_12",
+   "group": "語の編集",
+   "stratum": "library",
+   "semantic": false,
+   "mean_score": 0.2196860087338072
+  },
+  "replace_every_5/pubmed": {
+   "docs": 40,
+   "n": 200,
+   "detected": 6,
+   "detected_rate": 0.03,
+   "detected_ci": [
+    0.013820314259191425,
+    0.06389429280963374
+   ],
+   "correct_source_rate": 0.03,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 0.03,
+   "mean_coverage": 0.08310213634447647,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11095323201935993,
+   "precision": 0.09743543435073145,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8350235164165497,
+   "condition": "replace_every_5",
+   "group": "語の編集",
+   "stratum": "pubmed",
+   "semantic": false,
+   "mean_score": 0.11141325325989085
+  },
+  "replace_every_5/library": {
+   "docs": 40,
+   "n": 200,
+   "detected": 6,
+   "detected_rate": 0.03,
+   "detected_ci": [
+    0.013820314259191425,
+    0.06389429280963374
+   ],
+   "correct_source_rate": 0.03,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 0.03,
+   "mean_coverage": 0.066006529496745,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11149717482765893,
+   "precision": 0.07962979932190965,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8522058248519897,
+   "condition": "replace_every_5",
+   "group": "語の編集",
+   "stratum": "library",
+   "semantic": false,
+   "mean_score": 0.10971405227477096
+  },
+  "replace_every_8/pubmed": {
+   "docs": 40,
+   "n": 200,
+   "detected": 200,
+   "detected_rate": 1.0,
+   "detected_ci": [
+    0.9811546733310369,
+    0.9999999999999999
+   ],
+   "correct_source_rate": 1.0,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 0.9317982191623994,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.1111086442503025,
+   "precision": 0.5377545836604628,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8571156442165375,
+   "condition": "replace_every_8",
+   "group": "語の編集",
+   "stratum": "pubmed",
+   "semantic": false,
+   "mean_score": 0.2199966479043481
+  },
+  "replace_every_8/library": {
+   "docs": 40,
+   "n": 200,
+   "detected": 200,
+   "detected_rate": 1.0,
+   "detected_ci": [
+    0.9811546733310369,
+    0.9999999999999999
+   ],
+   "correct_source_rate": 0.93,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 0.9129102698022362,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11101983726119245,
+   "precision": 0.5308439273819018,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.9198444604873657,
+   "condition": "replace_every_8",
+   "group": "語の編集",
+   "stratum": "library",
+   "semantic": false,
+   "mean_score": 0.2163401025241536
+  },
+  "replace_every_12/pubmed": {
+   "docs": 40,
+   "n": 200,
+   "detected": 200,
+   "detected_rate": 1.0,
+   "detected_ci": [
+    0.9811546733310369,
+    0.9999999999999999
+   ],
+   "correct_source_rate": 1.0,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 0.9840628840949411,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11073121454658481,
+   "precision": 0.5523894996634507,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8523179113864898,
+   "condition": "replace_every_12",
+   "group": "語の編集",
+   "stratum": "pubmed",
+   "semantic": false,
+   "mean_score": 0.2264681682418324
+  },
+  "replace_every_12/library": {
+   "docs": 40,
+   "n": 200,
+   "detected": 200,
+   "detected_rate": 1.0,
+   "detected_ci": [
+    0.9811546733310369,
+    0.9999999999999999
+   ],
+   "correct_source_rate": 0.93,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 0.9823825592704073,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11113084599758001,
+   "precision": 0.5490337402585702,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.9407394230365753,
+   "condition": "replace_every_12",
+   "group": "語の編集",
+   "stratum": "library",
+   "semantic": false,
+   "mean_score": 0.22570465969964978
+  },
+  "replace_every_20/pubmed": {
+   "docs": 40,
+   "n": 200,
+   "detected": 200,
+   "detected_rate": 1.0,
+   "detected_ci": [
+    0.9811546733310369,
+    0.9999999999999999
+   ],
+   "correct_source_rate": 1.0,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 0.9841695684120899,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11098653464027619,
+   "precision": 0.5523818051575932,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8580994963645935,
+   "condition": "replace_every_20",
+   "group": "語の編集",
+   "stratum": "pubmed",
+   "semantic": false,
+   "mean_score": 0.22688531547756527
+  },
+  "replace_every_20/library": {
+   "docs": 40,
+   "n": 200,
+   "detected": 200,
+   "detected_rate": 1.0,
+   "detected_ci": [
+    0.9811546733310369,
+    0.9999999999999999
+   ],
+   "correct_source_rate": 0.935,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 0.9835411594105358,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11072011367294605,
+   "precision": 0.5505385066017755,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.9368972182273865,
+   "condition": "replace_every_20",
+   "group": "語の編集",
+   "stratum": "library",
+   "semantic": false,
+   "mean_score": 0.22561183334987941
+  },
+  "swap_every_5/pubmed": {
+   "docs": 40,
+   "n": 200,
+   "detected": 3,
+   "detected_rate": 0.015,
+   "detected_ci": [
+    0.005114237753504752,
+    0.043165729115389295
+   ],
+   "correct_source_rate": 0.015,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 0.015,
+   "mean_coverage": 0.024757161436197966,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11111974512394125,
+   "precision": 0.030414567996900427,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8373354911804199,
+   "condition": "swap_every_5",
+   "group": "語の編集",
+   "stratum": "pubmed",
+   "semantic": false,
+   "mean_score": 0.1037624068157508
+  },
+  "swap_every_5/library": {
+   "docs": 40,
+   "n": 200,
+   "detected": 1,
+   "detected_rate": 0.005,
+   "detected_ci": [
+    0.0008831687058453754,
+    0.02777370469642793
+   ],
+   "correct_source_rate": 0.005,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 0.005,
+   "mean_coverage": 0.01769335855505616,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11140836783854889,
+   "precision": 0.021737011404620334,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8484644055366516,
+   "condition": "swap_every_5",
+   "group": "語の編集",
+   "stratum": "library",
+   "semantic": false,
+   "mean_score": 0.10339246578008694
+  },
+  "swap_every_10/pubmed": {
+   "docs": 40,
+   "n": 200,
+   "detected": 200,
+   "detected_rate": 1.0,
+   "detected_ci": [
+    0.9811546733310369,
+    0.9999999999999999
+   ],
+   "correct_source_rate": 1.0,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 0.9996031746031746,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11108644250302499,
+   "precision": 0.5562896288742074,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8445879280567169,
+   "condition": "swap_every_10",
+   "group": "語の編集",
+   "stratum": "pubmed",
+   "semantic": false,
+   "mean_score": 0.22900170451796548
+  },
+  "swap_every_10/library": {
+   "docs": 40,
+   "n": 200,
+   "detected": 200,
+   "detected_rate": 1.0,
+   "detected_ci": [
+    0.9811546733310369,
+    0.9999999999999999
+   ],
+   "correct_source_rate": 0.935,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 0.9968960743490902,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11095323201935993,
+   "precision": 0.5538344790643692,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.9159805953502655,
+   "condition": "swap_every_10",
+   "group": "語の編集",
+   "stratum": "library",
+   "semantic": false,
+   "mean_score": 0.22759874335136035
+  },
+  "shuffle_sentences/pubmed": {
+   "docs": 40,
+   "n": 200,
+   "detected": 198,
+   "detected_rate": 0.99,
+   "detected_ci": [
+    0.9642782379732652,
+    0.997253341891151
+   ],
+   "correct_source_rate": 0.99,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 0.99,
+   "mean_coverage": 0.9528899309107906,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11059800406291975,
+   "precision": 0.7052017990294709,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.9268623113632202,
+   "condition": "shuffle_sentences",
+   "group": "語の編集",
+   "stratum": "pubmed",
+   "semantic": false,
+   "mean_score": 0.3039652763021194
+  },
+  "shuffle_sentences/library": {
+   "docs": 40,
+   "n": 200,
+   "detected": 197,
+   "detected_rate": 0.985,
+   "detected_ci": [
+    0.9568342708846106,
+    0.9948857622464952
+   ],
+   "correct_source_rate": 0.925,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 0.985,
+   "mean_coverage": 0.934278734985067,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.10977653941365186,
+   "precision": 0.7014371112855504,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 1.1697964251041413,
+   "condition": "shuffle_sentences",
+   "group": "語の編集",
+   "stratum": "library",
+   "semantic": false,
+   "mean_score": 0.2986577047807669
+  },
+  "homoglyph_cyrillic/pubmed": {
+   "docs": 40,
+   "n": 200,
+   "detected": 200,
+   "detected_rate": 1.0,
+   "detected_ci": [
+    0.9811546733310369,
+    0.9999999999999999
+   ],
+   "correct_source_rate": 1.0,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 1.0,
+   "flagged_doc_rate": 1.0,
+   "flag_kinds": {
+    "文字の置き換え": 40
+   },
+   "filler_match_rate": 0.11079781978841735,
+   "precision": 0.557030001775253,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8683817863464356,
+   "condition": "homoglyph_cyrillic",
+   "group": "文字の加工",
+   "stratum": "pubmed",
+   "semantic": false,
+   "mean_score": 0.2287556655595869
+  },
+  "homoglyph_greek/pubmed": {
+   "docs": 40,
+   "n": 200,
+   "detected": 197,
+   "detected_rate": 0.985,
+   "detected_ci": [
+    0.9568342708846106,
+    0.9948857622464952
+   ],
+   "correct_source_rate": 0.985,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 0.985,
+   "mean_coverage": 0.8838719679941027,
+   "flagged_doc_rate": 1.0,
+   "flag_kinds": {
+    "文字の置き換え": 40
+   },
+   "filler_match_rate": 0.11106424075574747,
+   "precision": 0.5259417199715707,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8514046549797059,
+   "condition": "homoglyph_greek",
+   "group": "文字の加工",
+   "stratum": "pubmed",
+   "semantic": false,
+   "mean_score": 0.21371738535006773
+  },
+  "homoglyph_armenian/pubmed": {
+   "docs": 40,
+   "n": 200,
+   "detected": 200,
+   "detected_rate": 1.0,
+   "detected_ci": [
+    0.9811546733310369,
+    0.9999999999999999
+   ],
+   "correct_source_rate": 1.0,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 1.0,
+   "flagged_doc_rate": 1.0,
+   "flag_kinds": {
+    "文字の置き換え": 40
+   },
+   "filler_match_rate": 0.11079781978841735,
+   "precision": 0.557030001775253,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8701777756214142,
+   "condition": "homoglyph_armenian",
+   "group": "文字の加工",
+   "stratum": "pubmed",
+   "semantic": false,
+   "mean_score": 0.2287556655595869
+  },
+  "fullwidth/pubmed": {
+   "docs": 40,
+   "n": 200,
+   "detected": 200,
+   "detected_rate": 1.0,
+   "detected_ci": [
+    0.9811546733310369,
+    0.9999999999999999
+   ],
+   "correct_source_rate": 1.0,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 1.0,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11079781978841735,
+   "precision": 0.557030001775253,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8705622255802155,
+   "condition": "fullwidth",
+   "group": "文字の加工",
+   "stratum": "pubmed",
+   "semantic": false,
+   "mean_score": 0.2287556655595869
+  },
+  "math_bold/pubmed": {
+   "docs": 40,
+   "n": 200,
+   "detected": 200,
+   "detected_rate": 1.0,
+   "detected_ci": [
+    0.9811546733310369,
+    0.9999999999999999
+   ],
+   "correct_source_rate": 1.0,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 1.0,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11079781978841735,
+   "precision": 0.557030001775253,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8694747507572174,
+   "condition": "math_bold",
+   "group": "文字の加工",
+   "stratum": "pubmed",
+   "semantic": false,
+   "mean_score": 0.2287556655595869
+  },
+  "zero_width/pubmed": {
+   "docs": 40,
+   "n": 200,
+   "detected": 200,
+   "detected_rate": 1.0,
+   "detected_ci": [
+    0.9811546733310369,
+    0.9999999999999999
+   ],
+   "correct_source_rate": 1.0,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 1.0,
+   "flagged_doc_rate": 1.0,
+   "flag_kinds": {
+    "不可視文字": 40
+   },
+   "filler_match_rate": 0.11079781978841735,
+   "precision": 0.557030001775253,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8737448751926422,
+   "condition": "zero_width",
+   "group": "文字の加工",
+   "stratum": "pubmed",
+   "semantic": false,
+   "mean_score": 0.2287556655595869
+  },
+  "soft_hyphen/pubmed": {
+   "docs": 40,
+   "n": 200,
+   "detected": 200,
+   "detected_rate": 1.0,
+   "detected_ci": [
+    0.9811546733310369,
+    0.9999999999999999
+   ],
+   "correct_source_rate": 1.0,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 1.0,
+   "flagged_doc_rate": 1.0,
+   "flag_kinds": {
+    "ソフトハイフン": 40
+   },
+   "filler_match_rate": 0.11079781978841735,
+   "precision": 0.557030001775253,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.872970974445343,
+   "condition": "soft_hyphen",
+   "group": "文字の加工",
+   "stratum": "pubmed",
+   "semantic": false,
+   "mean_score": 0.2287556655595869
+  },
+  "variation_selector/pubmed": {
+   "docs": 40,
+   "n": 200,
+   "detected": 200,
+   "detected_rate": 1.0,
+   "detected_ci": [
+    0.9811546733310369,
+    0.9999999999999999
+   ],
+   "correct_source_rate": 1.0,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 1.0,
+   "flagged_doc_rate": 1.0,
+   "flag_kinds": {
+    "不可視文字": 40
+   },
+   "filler_match_rate": 0.11079781978841735,
+   "precision": 0.557030001775253,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8741343080997467,
+   "condition": "variation_selector",
+   "group": "文字の加工",
+   "stratum": "pubmed",
+   "semantic": false,
+   "mean_score": 0.2287556655595869
+  },
+  "tag_character/pubmed": {
+   "docs": 40,
+   "n": 200,
+   "detected": 200,
+   "detected_rate": 1.0,
+   "detected_ci": [
+    0.9811546733310369,
+    0.9999999999999999
+   ],
+   "correct_source_rate": 1.0,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 1.0,
+   "flagged_doc_rate": 1.0,
+   "flag_kinds": {
+    "不可視文字": 40
+   },
+   "filler_match_rate": 0.11079781978841735,
+   "precision": 0.557030001775253,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8725052833557129,
+   "condition": "tag_character",
+   "group": "文字の加工",
+   "stratum": "pubmed",
+   "semantic": false,
+   "mean_score": 0.2287556655595869
+  },
+  "bidi_control/pubmed": {
+   "docs": 40,
+   "n": 200,
+   "detected": 200,
+   "detected_rate": 1.0,
+   "detected_ci": [
+    0.9811546733310369,
+    0.9999999999999999
+   ],
+   "correct_source_rate": 1.0,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 1.0,
+   "flagged_doc_rate": 1.0,
+   "flag_kinds": {
+    "不可視文字": 40
+   },
+   "filler_match_rate": 0.11079781978841735,
+   "precision": 0.557030001775253,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8710753202438355,
+   "condition": "bidi_control",
+   "group": "文字の加工",
+   "stratum": "pubmed",
+   "semantic": false,
+   "mean_score": 0.2287556655595869
+  },
+  "mongolian_separator/pubmed": {
+   "docs": 40,
+   "n": 200,
+   "detected": 200,
+   "detected_rate": 1.0,
+   "detected_ci": [
+    0.9811546733310369,
+    0.9999999999999999
+   ],
+   "correct_source_rate": 1.0,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 1.0,
+   "flagged_doc_rate": 1.0,
+   "flag_kinds": {
+    "不可視文字": 40
+   },
+   "filler_match_rate": 0.11079781978841735,
+   "precision": 0.557030001775253,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8666645467281342,
+   "condition": "mongolian_separator",
+   "group": "文字の加工",
+   "stratum": "pubmed",
+   "semantic": false,
+   "mean_score": 0.2287556655595869
+  },
+  "combining_joiner/pubmed": {
+   "docs": 40,
+   "n": 200,
+   "detected": 200,
+   "detected_rate": 1.0,
+   "detected_ci": [
+    0.9811546733310369,
+    0.9999999999999999
+   ],
+   "correct_source_rate": 1.0,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 1.0,
+   "flagged_doc_rate": 1.0,
+   "flag_kinds": {
+    "不可視文字": 40
+   },
+   "filler_match_rate": 0.11079781978841735,
+   "precision": 0.557030001775253,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8743708074092865,
+   "condition": "combining_joiner",
+   "group": "文字の加工",
+   "stratum": "pubmed",
+   "semantic": false,
+   "mean_score": 0.2287556655595869
+  },
+  "special_spaces/pubmed": {
+   "docs": 40,
+   "n": 200,
+   "detected": 200,
+   "detected_rate": 1.0,
+   "detected_ci": [
+    0.9811546733310369,
+    0.9999999999999999
+   ],
+   "correct_source_rate": 1.0,
+   "semantic_rate": 0.0,
+   "semantic_ci": [
+    0.0,
+    0.018845326668962936
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 1.0,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11079781978841735,
+   "precision": 0.557030001775253,
+   "filler_semantic_per_1000": 0.0,
+   "seconds_per_doc": 0.8754221379756928,
+   "condition": "special_spaces",
+   "group": "文字の加工",
+   "stratum": "pubmed",
+   "semantic": false,
+   "mean_score": 0.2287556655595869
+  },
+  "llm_light/pubmed": {
+   "docs": 20,
+   "n": 100,
+   "detected": 98,
+   "detected_rate": 0.98,
+   "detected_ci": [
+    0.9299882086824253,
+    0.9944980324993383
+   ],
+   "correct_source_rate": 0.97,
+   "semantic_rate": 0.37,
+   "semantic_ci": [
+    0.2818236047080924,
+    0.4677947049718467
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 0.8615653173501837,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.10476054441202277,
+   "precision": 0.7004667444574095,
+   "filler_semantic_per_1000": 2.346603546432142,
+   "seconds_per_doc": 10.779956555366516,
+   "condition": "llm_light",
+   "group": "LLMの書き換え",
+   "stratum": "pubmed",
+   "semantic": true,
+   "mean_score": 0.28191453539886246
+  },
+  "llm_light/library": {
+   "docs": 20,
+   "n": 100,
+   "detected": 88,
+   "detected_rate": 0.88,
+   "detected_ci": [
+    0.8018790050092598,
+    0.9300059359263032
+   ],
+   "correct_source_rate": 0.76,
+   "semantic_rate": 0.37,
+   "semantic_ci": [
+    0.2818236047080924,
+    0.4677947049718467
+   ],
+   "either_rate": 0.99,
+   "mean_coverage": 0.7910769855135924,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.10425041320627665,
+   "precision": 0.6823156323840318,
+   "filler_semantic_per_1000": 2.346603546432142,
+   "seconds_per_doc": 11.920760428905487,
+   "condition": "llm_light",
+   "group": "LLMの書き換え",
+   "stratum": "library",
+   "semantic": true,
+   "mean_score": 0.2641387492972944
+  },
+  "llm_heavy/pubmed": {
+   "docs": 19,
+   "n": 95,
+   "detected": 0,
+   "detected_rate": 0.0,
+   "detected_ci": [
+    0.0,
+    0.038864854128766085
+   ],
+   "correct_source_rate": 0.0,
+   "semantic_rate": 0.9789473684210527,
+   "semantic_ci": [
+    0.9264588044363116,
+    0.9942074931877127
+   ],
+   "either_rate": 0.9789473684210527,
+   "mean_coverage": 0.06018268988821403,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.10765101256983241,
+   "precision": 0.16630049011323306,
+   "filler_semantic_per_1000": 2.4223114525139664,
+   "seconds_per_doc": 10.977172839014154,
+   "condition": "llm_heavy",
+   "group": "LLMの書き換え",
+   "stratum": "pubmed",
+   "semantic": true,
+   "mean_score": 0.09829020505439262
+  },
+  "llm_heavy/library": {
+   "docs": 20,
+   "n": 100,
+   "detected": 0,
+   "detected_rate": 0.0,
+   "detected_ci": [
+    0.0,
+    0.03699349876899627
+   ],
+   "correct_source_rate": 0.0,
+   "semantic_rate": 0.82,
+   "semantic_ci": [
+    0.7333264153744679,
+    0.8829977454133746
+   ],
+   "either_rate": 0.82,
+   "mean_coverage": 0.07973226918700714,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.1046789234191034,
+   "precision": 0.20575940548072458,
+   "filler_semantic_per_1000": 2.346603546432142,
+   "seconds_per_doc": 12.503024649620055,
+   "condition": "llm_heavy",
+   "group": "LLMの書き換え",
+   "stratum": "library",
+   "semantic": true,
+   "mean_score": 0.10218379205934017
+  },
+  "llm_translate_en/library_ja": {
+   "docs": 13,
+   "n": 65,
+   "detected": 0,
+   "detected_rate": 0.0,
+   "detected_ci": [
+    0.0,
+    0.05580153215404492
+   ],
+   "correct_source_rate": 0.0,
+   "semantic_rate": 0.8615384615384616,
+   "semantic_ci": [
+    0.7573190265740312,
+    0.9254090963299672
+   ],
+   "either_rate": 0.8615384615384616,
+   "mean_coverage": 0.026294812607567834,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11048312418175432,
+   "precision": 0.09754825247782994,
+   "filler_semantic_per_1000": 2.2990707922214773,
+   "seconds_per_doc": 11.31527460538424,
+   "condition": "llm_translate_en",
+   "group": "LLMの書き換え",
+   "stratum": "library_ja",
+   "semantic": true,
+   "mean_score": 0.08828602638150046
+  },
+  "control_filler/-": {
+   "docs": 40,
+   "n": 0,
+   "detected": 0,
+   "detected_rate": null,
+   "detected_ci": [
+    0.0,
+    0.0
+   ],
+   "correct_source_rate": null,
+   "semantic_rate": null,
+   "semantic_ci": [
+    0.0,
+    0.0
+   ],
+   "either_rate": null,
+   "mean_coverage": null,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.11115304774485751,
+   "precision": 0.0,
+   "filler_semantic_per_1000": 2.575402684191246,
+   "seconds_per_doc": 8.05857448577881,
+   "condition": "control_filler",
+   "group": "対照",
+   "stratum": "-",
+   "semantic": true,
+   "mean_score": 0.11578685797432368
+  },
+  "control_human/-": {
+   "docs": 20,
+   "n": 0,
+   "detected": 0,
+   "detected_rate": null,
+   "detected_ci": [
+    0.0,
+    0.0
+   ],
+   "correct_source_rate": null,
+   "semantic_rate": null,
+   "semantic_ci": [
+    0.0,
+    0.0
+   ],
+   "either_rate": null,
+   "mean_coverage": null,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.15354134476399342,
+   "precision": 0.0,
+   "filler_semantic_per_1000": 1.9937197826845436,
+   "seconds_per_doc": 6.126534426212311,
+   "condition": "control_human",
+   "group": "対照",
+   "stratum": "-",
+   "semantic": true,
+   "mean_score": 0.14974742048072337
+  }
+ },
+ "retraction": {
+  "formats": {
+   "DOIあり": {
+    "n": 200,
+    "detected": 200,
+    "rate": 1.0,
+    "ci": [
+     0.9811546733310369,
+     0.9999999999999999
+    ]
+   },
+   "DOIのURL": {
+    "n": 200,
+    "detected": 200,
+    "rate": 1.0,
+    "ci": [
+     0.9811546733310369,
+     0.9999999999999999
+    ]
+   },
+   "DOIが行末で折り返し": {
+    "n": 200,
+    "detected": 200,
+    "rate": 1.0,
+    "ci": [
+     0.9811546733310369,
+     0.9999999999999999
+    ]
+   },
+   "PMIDのみ": {
+    "n": 93,
+    "detected": 93,
+    "rate": 1.0,
+    "ci": [
+     0.9603324967873037,
+     1.0
+    ]
+   },
+   "題名のみ": {
+    "n": 200,
+    "detected": 200,
+    "rate": 1.0,
+    "ci": [
+     0.9811546733310369,
+     0.9999999999999999
+    ]
+   },
+   "題名が行末で折り返し": {
+    "n": 200,
+    "detected": 200,
+    "rate": 1.0,
+    "ci": [
+     0.9811546733310369,
+     0.9999999999999999
+    ]
+   },
+   "題名が小文字": {
+    "n": 200,
+    "detected": 200,
+    "rate": 1.0,
+    "ci": [
+     0.9811546733310369,
+     0.9999999999999999
+    ]
+   },
+   "題名を省略": {
+    "n": 200,
+    "detected": 153,
+    "rate": 0.765,
+    "ci": [
+     0.7015863106396482,
+     0.8184256662258015
+    ]
+   },
+   "題名に1語の誤り": {
+    "n": 200,
+    "detected": 178,
+    "rate": 0.89,
+    "ci": [
+     0.8390730895663762,
+     0.9262275556318328
+    ]
+   }
+  },
+  "control": {
+   "DOIあり": {
+    "n": 400,
+    "flagged": 0,
+    "per_1000": 0.0,
+    "ci": [
+     0.0,
+     0.009512294482932589
+    ]
+   },
+   "題名のみ": {
+    "n": 400,
+    "flagged": 0,
+    "per_1000": 0.0,
+    "ci": [
+     0.0,
+     0.009512294482932589
+    ]
+   }
+  }
+ }
+}

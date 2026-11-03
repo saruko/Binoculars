@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS docs (
     meta TEXT,
     text BLOB NOT NULL
 );
+CREATE INDEX IF NOT EXISTS docs_source ON docs (source);
 CREATE TABLE IF NOT EXISTS ingested (name TEXT PRIMARY KEY, kind TEXT, n_docs INTEGER, ts REAL);
 CREATE TABLE IF NOT EXISTS segments (name TEXT PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS counters (name TEXT PRIMARY KEY, value INTEGER NOT NULL);
@@ -81,6 +82,7 @@ class Store:
         self.conn.execute("PRAGMA synchronous=NORMAL")
         self.conn.executescript(_SCHEMA)
         self._segments = None
+        self._doc_counts = None
 
     def close(self):
         self._segments = None
@@ -137,6 +139,7 @@ class Store:
                     "INSERT OR REPLACE INTO ingested VALUES (?,?,?,?)", (name, kind, len(rows), time.time())
                 )
         self._segments = None
+        self._doc_counts = None
         return len(rows)
 
     def _only_new(self, rows: list[DocRow], hashes: np.ndarray, local_ids: np.ndarray):
@@ -160,6 +163,7 @@ class Store:
     def remove_source(self, source: str):
         """指定した種類の文書を消す。統合済みの索引に残る指紋は、検索時に文書が見つからず無視される。"""
         self._segments = None
+        self._doc_counts = None
         gc.collect()
         with self._lock, self.conn:
             names = [r[0] for r in self.conn.execute("SELECT name FROM ingested WHERE kind=?", (source,))]
@@ -197,11 +201,13 @@ class Store:
             return self.conn.execute("SELECT COUNT(*) FROM docs").fetchone()[0]
 
     def lookup(self, hashes, limit: int, max_df: int = DEFAULT_MAX_DF, region_of: dict[int, int] | None = None,
-               per_region: int = 0) -> list[tuple[int, float]]:
+               per_region: int = 0, rare_df: int = 0) -> list[tuple[int, float]]:
         """共有する指紋の重み（珍しいほど高い）の合計が大きい順に (doc_id, 重み) を返す。
 
         region_of を渡すと、原稿の領域ごとの上位 per_region 件も加える。短い一致しかない文献が、
         原稿の別の箇所で定型句を多く共有する文献に押し出されないようにするため。
+        rare_df を渡すと、これ以下の文献にしかない指紋を共有する文献も必ず加える。短い一致の出典は
+        珍しい指紋を1つ共有するだけのことがあり、定型句を複数共有する文献より重みが小さくなるため。
         """
         query = np.unique(np.fromiter(hashes, dtype=np.uint64))
         if query.size == 0:
@@ -217,12 +223,14 @@ class Store:
         n_docs = max(self.doc_count(), 1)
         idf = np.log1p(n_docs / np.maximum(df, 1))
 
-        doc_parts, weight_parts, region_parts = [], [], []
+        doc_parts, weight_parts, region_parts, rare_parts = [], [], [], []
         for (_, doc_ids), (left, right) in zip(segments, ranges):
             for q in np.flatnonzero(usable & (right > left)):
                 part = np.asarray(doc_ids[left[q]:right[q]])
                 doc_parts.append(part)
                 weight_parts.append(np.full(part.size, idf[q]))
+                if df[q] <= rare_df:
+                    rare_parts.append(part)
                 if region_of:
                     region_parts.append(np.full(part.size, region_of.get(int(query[q]), -1)))
         if not doc_parts:
@@ -238,6 +246,8 @@ class Store:
                 local = np.bincount(inverse[mask], weights=weights[mask], minlength=ids.size)
                 best = np.argpartition(-local, min(per_region, ids.size - 1))[:per_region]
                 chosen.update(dict.fromkeys(int(i) for i in best if local[i] > 0))
+        if rare_parts:
+            chosen.update(dict.fromkeys(np.searchsorted(ids, np.unique(np.concatenate(rare_parts))).tolist()))
         return [(int(ids[i]), float(totals[i])) for i in chosen]
 
     def document_frequencies(self, hashes) -> dict[int, int]:
@@ -275,7 +285,10 @@ class Store:
 
     def stats(self) -> dict:
         with self._lock:
-            by_source = dict(self.conn.execute("SELECT source, COUNT(*) FROM docs GROUP BY source").fetchall())
+            # 全件を数えると時間がかかるので、登録や削除があるまで前回の値を使う
+            if self._doc_counts is None:
+                self._doc_counts = dict(self.conn.execute("SELECT source, COUNT(*) FROM docs GROUP BY source").fetchall())
+            by_source = dict(self._doc_counts)
             names = [r[0] for r in self.conn.execute("SELECT name FROM segments")]
         postings = 0
         for h, _ in self._load_segments():
