@@ -67,8 +67,10 @@ def add_library(store: Store, root: str | Path, workers: int | None = None, prog
 
     workers = workers or max(1, (os.cpu_count() or 4) - 2)
     with ProcessPoolExecutor(max_workers=workers) as pool:
-        futures = [pool.submit(_process_pdf, path, sha) for path, sha in jobs]
+        futures = {pool.submit(_process_pdf, path, sha) for path, sha in jobs}
         for done, future in enumerate(as_completed(futures), 1):
+            # 処理した分は参照を残さない。残すと登録後も全文献の本文と指紋がメモリにたまる
+            futures.remove(future)
             path, row, fps, error = future.result()
             if error:
                 skipped.append((path, error))

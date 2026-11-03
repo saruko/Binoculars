@@ -1,8 +1,11 @@
 import csv
+import gc
 import gzip
 import hashlib
 import os
 import re
+import weakref
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -13,7 +16,7 @@ from lxml import etree
 
 from simcheck.align import align, build_query_index
 from simcheck.engine import CheckOptions, check_document
-from simcheck import engine, integrity, pmc, pubmed, semantic
+from simcheck import engine, integrity, library, pmc, pubmed, semantic
 from simcheck.flags import Flag, check_docx, check_pdf, check_text
 from simcheck.integrity import check_integrity, find_retracted, find_tortured, parse_retractions, parse_tortured
 from simcheck.citations import (
@@ -1023,3 +1026,69 @@ def test_pubmed_parser_does_not_expand_xml_entities(tmp_path):
     assert record["title"] == "Title \u03b1 & more"
     assert "Body" in record["text"]
     assert "EXPANDED" not in record["text"] and "LEAKED" not in record["text"]
+
+
+def test_add_pubmed_releases_results_of_processed_files(tmp_path, monkeypatch):
+    class Rows(list):  # list のままでは弱参照を取れない
+        pass
+
+    def process_file(name, dest, keep_gz):
+        return name, Rows(), np.empty(0, dtype=np.uint64), np.empty(0, dtype=np.uint32)
+
+    class FakeStore:
+        def __init__(self):
+            self.refs, self.alive = [], []
+
+        def is_ingested(self, name):
+            return False
+
+        def add_batch(self, name, kind, rows, hashes, ids):
+            self.refs.append(weakref.ref(rows))
+            gc.collect()
+            self.alive.append(sum(ref() is not None for ref in self.refs))
+            return 0
+
+    monkeypatch.setattr(pubmed, "ProcessPoolExecutor", ThreadPoolExecutor)
+    monkeypatch.setattr(pubmed, "_process_file", process_file)
+    monkeypatch.setattr(pubmed, "list_baseline_files", lambda: [f"pubmed26n{i:04}.xml.gz" for i in range(5)])
+    monkeypatch.setattr(pubmed, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(pubmed, "MIN_FREE_GB", 0)
+
+    store = FakeStore()
+    pubmed.add_pubmed(store, workers=1, progress=lambda message: None)
+    # 登録中のファイルの分だけが残り、処理済みの結果はたまらない
+    assert store.alive == [1] * 5
+
+
+def test_add_library_releases_results_of_processed_files(tmp_path, monkeypatch):
+    refs = {}
+
+    def process_pdf(path, sha):
+        fps = np.array([1], dtype=np.uint64)
+        refs[path] = weakref.ref(fps)
+        row = DocRow(f"sha256:{sha}", "library", "t", None, None, False, {"path": path}, b"")
+        return path, row, fps, None
+
+    class FakeStore:
+        def __init__(self):
+            self.processed, self.alive = [], []
+
+        def has_ext_id(self, ext_id):
+            return False
+
+        def add_batch(self, name, kind, rows, hashes, ids):
+            self.processed.append(rows[0].meta["path"])
+            gc.collect()
+            self.alive.append(sum(refs[path]() is not None for path in self.processed))
+
+    for i in range(4):
+        (tmp_path / f"{i}.pdf").write_bytes(str(i).encode())
+    monkeypatch.setattr(library, "ProcessPoolExecutor", ThreadPoolExecutor)
+    monkeypatch.setattr(library, "_process_pdf", process_pdf)
+    monkeypatch.setattr(library, "BATCH_SIZE", 1)
+
+    store = FakeStore()
+    result = library.add_library(store, tmp_path, workers=1, progress=lambda message: None)
+    assert result["added"] == 4
+    # 登録中の文献の分だけが残り、登録済みの結果はたまらない
+    assert store.alive == [1] * 4

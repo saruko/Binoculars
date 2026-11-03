@@ -244,7 +244,8 @@ def add_pubmed(store: Store, first: int | None = None, last: int | None = None,
     with ProcessPoolExecutor(max_workers=workers) as pool:
         futures = {pool.submit(_process_file, n, str(dest), keep_gz): n for n in pending}
         for done, future in enumerate(as_completed(futures), 1):
-            name = futures[future]
+            # 結果は1ファイルで約0.2GBあるので、処理した分は参照を残さない
+            name = futures.pop(future)
             try:
                 _, rows, hashes, ids = future.result()
             except Exception as e:
