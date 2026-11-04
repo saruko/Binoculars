@@ -70,6 +70,14 @@ def compress_text(text: str) -> bytes:
     return zlib.compress(text.encode("utf-8", "replace"), 6)
 
 
+def _segment_kind(segment: str, ingested: dict[str, str]) -> str | None:
+    """セグメントを登録した種類を返す。同じ名前で再登録すると、セグメント名は {name}_{base} になる。"""
+    if segment in ingested:
+        return ingested[segment]
+    name, _, base = segment.rpartition("_")
+    return ingested.get(name) if base.isdigit() else None
+
+
 class Store:
     def __init__(self, root: str | Path = DATA_DIR):
         self.root = Path(root)
@@ -166,7 +174,11 @@ class Store:
         self._doc_counts = None
         gc.collect()
         with self._lock, self.conn:
-            names = [r[0] for r in self.conn.execute("SELECT name FROM ingested WHERE kind=?", (source,))]
+            ingested = dict(self.conn.execute("SELECT name, kind FROM ingested"))
+            names = [
+                r[0] for r in self.conn.execute("SELECT name FROM segments")
+                if _segment_kind(r[0], ingested) == source
+            ]
             self.conn.execute("DELETE FROM docs WHERE source=?", (source,))
             self.conn.execute("DELETE FROM ingested WHERE kind=?", (source,))
             self.conn.executemany("DELETE FROM segments WHERE name=?", [(n,) for n in names])
@@ -187,14 +199,14 @@ class Store:
         if self._segments is None:
             with self._lock:
                 names = [r[0] for r in self.conn.execute("SELECT name FROM segments")]
-            self._segments = [
-                (
-                    np.load(self.seg_dir / f"{n}.h.npy", mmap_mode="r"),
-                    np.load(self.seg_dir / f"{n}.d.npy", mmap_mode="r"),
-                )
-                for n in names
-            ]
+            self._segments = [self._open_segment(n) for n in names]
         return self._segments
+
+    def _open_segment(self, name: str):
+        return (
+            np.load(self.seg_dir / f"{name}.h.npy", mmap_mode="r"),
+            np.load(self.seg_dir / f"{name}.d.npy", mmap_mode="r"),
+        )
 
     def doc_count(self) -> int:
         with self._lock:
@@ -304,12 +316,19 @@ class Store:
     # ---- 圧縮 ----
 
     def compact(self, name: str = "main") -> int:
-        """全セグメントを1つに統合する。セグメント数が多いと検索時のディスク読み込みが増えるため。"""
-        segments = self._load_segments()
-        if len(segments) <= 1:
-            return len(segments)
+        """全セグメントを1つに統合し、残ったセグメント数を返す。セグメント数が多いと検索時のディスク読み込みが増えるため。
+
+        統合中に別のプロセスが登録したセグメントは、次の統合まで別に残す。
+        """
+        # 手元の一覧は古いことがあるので、統合するものを読み直して覚えておく
+        with self._lock:
+            names = [r[0] for r in self.conn.execute("SELECT name FROM segments")]
+        if len(names) <= 1:
+            return len(names)
+        segments = [self._open_segment(n) for n in names]
         total = sum(h.shape[0] for h, _ in segments)
-        new_name = f"{name}_{int(time.time())}"
+        # 続けて統合しても、統合元と同じ名前にならないようにする
+        new_name = f"{name}_{time.time_ns()}"
         h_tmp = self.seg_dir / f"{new_name}.h.npy.tmp"
         d_tmp = self.seg_dir / f"{new_name}.d.npy.tmp"
         h_out = np.lib.format.open_memmap(h_tmp, mode="w+", dtype=np.uint64, shape=(total,))
@@ -343,17 +362,27 @@ class Store:
         os.replace(d_tmp, self.seg_dir / f"{new_name}.d.npy")
 
         with self._lock, self.conn:
-            old = [r[0] for r in self.conn.execute("SELECT name FROM segments")]
-            self.conn.execute("DELETE FROM segments")
-            self.conn.execute("INSERT INTO segments VALUES (?)", (new_name,))
-        # Windows では mmap 中のファイルを消せないので先に手放す
-        del segments
+            self.conn.execute("BEGIN IMMEDIATE")
+            current = {r[0] for r in self.conn.execute("SELECT name FROM segments")}
+            # 統合中に別のプロセスが統合や削除をしていたら、同じ指紋を二重に数えないよう今回の結果を捨てる
+            still_there = current.issuperset(names)
+            if still_there:
+                self.conn.executemany("DELETE FROM segments WHERE name=?", [(n,) for n in names])
+                self.conn.execute("INSERT INTO segments VALUES (?)", (new_name,))
+                remaining = len(current) - len(names) + 1
+                unused = names
+            else:
+                remaining = len(current)
+                # 相手がこちらの mmap のために消せなかったファイルも片付ける
+                unused = [new_name, *(n for n in names if n not in current)]
+        # Windows では mmap 中のファイルを消せないので先に手放す。ループの変数も最後のセグメントを指している
+        del segments, h, d, h_parts, d_parts
         self._segments = None
         gc.collect()
-        for n in old:
+        for n in unused:
             for suffix in (".h.npy", ".d.npy"):
                 try:
                     (self.seg_dir / f"{n}{suffix}").unlink()
                 except OSError:
                     pass
-        return 1
+        return remaining

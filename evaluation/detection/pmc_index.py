@@ -24,7 +24,7 @@ import run
 from cases import DATA, Condition, build_cases, english_passage, split_of, stable_rng, summarize
 from simcheck import DATA_DIR, engine
 from simcheck.engine import CheckOptions
-from simcheck.semantic import SemanticIndex, extend_index
+from simcheck.semantic import extend_index, shared_index
 from simcheck.store import Store
 
 SPLIT = "dev"
@@ -83,7 +83,7 @@ def build(root: Path):
 
 
 def _use_index(root: Path):
-    SemanticIndex.__init__.__defaults__ = (DATA_DIR / "semantic", root)
+    engine.shared_index = lambda: shared_index(DATA_DIR / "semantic", root)
 
 
 def score(root: Path, tag: str):
@@ -95,7 +95,6 @@ def score(root: Path, tag: str):
             row = json.loads(line)
             texts[(row["passage_key"], row["mode"])] = row["text"]
     cells = {}
-    engine.SemanticIndex = run._SharedIndex
     with Store() as store, tempfile.TemporaryDirectory(dir=DATA) as tmp_dir:
         for mode in MODES:
             condition = Condition(f"llm_{mode}", "LLMの書き換え", ("pmc",), llm_mode=mode, semantic=True)

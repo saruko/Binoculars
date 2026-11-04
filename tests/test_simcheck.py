@@ -26,7 +26,7 @@ from simcheck.citations import (
 from simcheck.pdfcheck import check_rendered_text
 from simcheck.pdfreport import render_pdf
 from simcheck.pubmed import reference_ids
-from simcheck.report import render_html
+from simcheck.report import _render_document, render_html
 from simcheck.sections import quote_spans, spans_of, strip_references
 from simcheck.store import Doc, DocRow, Store, compress_text
 from simcheck.textnorm import fingerprints, normalize, shingle_hashes, tokenize, winnow
@@ -140,6 +140,19 @@ def test_remove_source_keeps_other_sources(tmp_path):
         assert s.stats()["docs"] == {"pubmed": 1}
         assert s.stats()["segments"] == 1
         assert run(s, tmp_path, SOURCE_JA).sources == []
+        assert run(s, tmp_path, SOURCE_EN).sources
+
+
+def test_remove_source_also_removes_segments_of_a_repeated_name(tmp_path):
+    with Store(tmp_path / "index") as s:
+        add_doc(s, "sha256:a", SOURCE_JA, source="library", name="lib1")
+        add_doc(s, "sha256:b", UNRELATED, source="library", name="lib1")
+        add_doc(s, "pmid:1", SOURCE_EN, name="lib1_999")  # 名前が似ているだけの別の種類は残す
+        assert s.stats()["segments"] == 3
+        s.remove_source("library")
+        assert s.stats()["segments"] == 1
+        assert {p.name for p in s.seg_dir.iterdir()} == {"lib1_999.h.npy", "lib1_999.d.npy"}
+        assert set(s.document_frequencies(fingerprints(UNRELATED)).values()) == {0}
         assert run(s, tmp_path, SOURCE_EN).sources
 
 
@@ -305,6 +318,62 @@ def test_compact_preserves_lookup(tmp_path):
         assert s.stats()["segments"] == 1
         assert {d for d, _ in s.lookup(fingerprints(SOURCE_EN), 10)} == before
         assert run(s, tmp_path, SOURCE_JA).sources[0].doc.ext_id == "pmid:2"
+
+
+def add_during_compaction(monkeypatch, action):
+    real = np.lib.format.open_memmap
+    done = []
+
+    def open_memmap(*args, **kwargs):
+        if not done:
+            done.append(True)
+            action()
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(np.lib.format, "open_memmap", open_memmap)
+
+
+def test_compact_keeps_a_segment_registered_meanwhile(tmp_path, monkeypatch):
+    with Store(tmp_path / "index") as s, Store(tmp_path / "index") as other:
+        add_doc(s, "pmid:1", SOURCE_EN)
+        add_doc(s, "pmid:2", SOURCE_JA)
+        add_during_compaction(monkeypatch, lambda: add_doc(other, "pmid:3", UNRELATED))
+        assert s.compact() == 2
+        assert s.stats()["segments"] == 2
+        for text, ext_id in ((SOURCE_EN, "pmid:1"), (SOURCE_JA, "pmid:2"), (UNRELATED, "pmid:3")):
+            assert run(s, tmp_path, text).sources[0].doc.ext_id == ext_id
+        assert (s.seg_dir / "pmid_3.h.npy").exists()
+        assert not (s.seg_dir / "pmid_1.h.npy").exists() and not (s.seg_dir / "pmid_2.h.npy").exists()
+        assert s.compact() == 1
+        assert run(s, tmp_path, UNRELATED).sources[0].doc.ext_id == "pmid:3"
+
+
+def test_compact_includes_segments_this_process_has_not_seen(tmp_path):
+    with Store(tmp_path / "index") as s, Store(tmp_path / "index") as other:
+        add_doc(s, "pmid:1", SOURCE_EN)
+        add_doc(s, "pmid:2", SOURCE_JA)
+        s.stats()  # 一覧を手元に覚える
+        add_doc(other, "pmid:3", UNRELATED)
+        assert s.compact() == 1
+        assert run(s, tmp_path, UNRELATED).sources[0].doc.ext_id == "pmid:3"
+
+
+def test_compact_gives_up_when_another_process_compacted_meanwhile(tmp_path, monkeypatch):
+    with Store(tmp_path / "index") as s, Store(tmp_path / "index") as other:
+        add_doc(s, "pmid:1", SOURCE_EN)
+        add_doc(s, "pmid:2", SOURCE_JA)
+        before = s.stats()["postings"]
+
+        def compact_elsewhere():
+            monkeypatch.undo()
+            other.compact("other")
+
+        add_during_compaction(monkeypatch, compact_elsewhere)
+        assert s.compact() == 1
+        stats = s.stats()
+        assert stats["segments"] == 1 and stats["postings"] == before  # 指紋を二重に数えない
+        assert len(list(s.seg_dir.glob("*.h.npy"))) == 1
+        assert run(s, tmp_path, SOURCE_EN).sources[0].doc.ext_id == "pmid:1"
 
 
 def test_common_fingerprints_are_ignored_for_candidates(tmp_path):
@@ -836,6 +905,107 @@ def test_rerank_falls_back_to_threshold_without_model(monkeypatch):
     assert engine._rerank(rerank_pairs(text), text, docs, CheckOptions(), notices) == []
     assert "再評価に失敗" in notices[0]
     assert len(engine._rerank(rerank_pairs(text), text, docs, CheckOptions(semantic_threshold=0.7), [])) == 1
+
+
+def test_rerank_keeps_other_languages_without_model(monkeypatch):
+    calls = []
+
+    def fail():
+        calls.append(1)
+        raise OSError("model missing")
+
+    monkeypatch.setattr(engine, "get_scorer", fail)
+    text = "A paraphrased sentence about glaucoma. A translated sentence about cataract."
+    first, second = (0, 38), (39, len(text))
+    docs = {
+        1: Doc(1, "pmid:1", "pubmed", "t", None, None, False, {}, "A source sentence about glaucoma treatment."),
+        2: Doc(2, "pmid:2", "pubmed", "t", None, None, False, {}, "白内障の治療についての文章です。"),
+    }
+    pairs = [(first, (1, 0, 20, 0.83)), (second, (2, 0, 16, 0.78))]
+    notices = []
+    kept = engine._rerank(pairs, text, docs, CheckOptions(), notices)
+    assert kept == [pairs[1]]  # 言語をまたぐ候補は類似度0.75〜0.85でも残る
+    assert len(notices) == 1 and "1 件" in notices[0]
+    assert len(calls) == 1
+
+
+def test_rerank_survives_a_failure_while_scoring(monkeypatch):
+    class Flaky:
+        def __init__(self):
+            self.calls = 0
+
+        def mean_gain(self, source, target):
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("CUDA out of memory")
+            return 1.0
+
+    scorer = Flaky()
+    monkeypatch.setattr(engine, "get_scorer", lambda: scorer)
+    text = "A paraphrased sentence about glaucoma. Another paraphrased sentence about glaucoma."
+    docs = rerank_docs("A source sentence about glaucoma treatment.")
+    high, recovered = ((0, 38), (1, 0, 20, 0.9)), ((39, len(text)), (1, 0, 20, 0.83))
+    low = ((0, 38), (1, 0, 20, 0.83))
+    notices = []
+    assert engine._rerank([high, recovered], text, docs, CheckOptions(), notices) == [high, recovered]
+    assert "CUDA out of memory" in notices[0] and "1 件" in notices[0]
+    # 再評価できなかった候補は類似度で判定する
+    scorer.calls = 0
+    assert engine._rerank([low, recovered], text, docs, CheckOptions(), []) == [recovered]
+
+
+def test_long_sentences_are_split_instead_of_cut():
+    english = ("The macular thickness was measured repeatedly, " * 30).strip() + "."
+    spans = semantic.sentence_spans(english)
+    assert len(spans) > 1 and max(e - s for s, e in spans) <= semantic.MAX_CHUNK_CHARS
+    assert spans[0][0] == 0 and spans[-1][1] == len(english)
+    assert all(a[1] == b[0] for a, b in zip(spans, spans[1:]))
+    assert all(english[e - 1] in ", " for _, e in spans[:-1])  # 語の途中で切らない
+
+    japanese = "加齢黄斑変性は高齢者の不可逆的な視力低下の主要な原因であり、" * 12 + "報告されている。"
+    spans = semantic.sentence_spans(japanese)
+    assert len(spans) > 1 and max(e - s for s, e in spans) <= semantic.MAX_CHUNK_CHARS_JA
+    assert spans[-1][1] == len(japanese)
+    assert all(japanese[e - 1] == "、" for _, e in spans[:-1])
+
+    assert semantic._split_long("x" * 1200, 0, 1200) == [(0, 500), (500, 1000), (1000, 1200)]  # 切れ目がなくても分ける
+    assert semantic.sentence_spans(SOURCE_EN) == [(0, len(SOURCE_EN))]  # 収まる文は分けない
+
+
+def test_shared_index_is_reused_until_the_files_change(tmp_path):
+    root, pubmed_root = tmp_path / "semantic", tmp_path / "semantic_pubmed"
+    root.mkdir()
+    np.save(root / "vectors.npy", np.eye(4, dtype=np.float32))
+    np.save(root / "chunks.npy", np.array([(i, 0, 10) for i in range(4)], dtype=np.int64))
+
+    first = semantic.shared_index(root, pubmed_root)
+    assert semantic.shared_index(root, pubmed_root) is first
+
+    os.utime(root / "chunks.npy", ns=(1, 1))
+    assert semantic.shared_index(root, pubmed_root) is not first
+
+
+def highlight_report(text, owned=(), excluded=(), hits=()):
+    doc = Doc(1, "pmid:1", "pubmed", "t", None, None, False, {}, "source")
+    return engine.Report(
+        "m.txt", "m", text, 0.1, 10, 0, 1, [], list(owned), list(excluded),
+        [engine.SemanticHit(s, e, doc, 0, 6, 0.9) for s, e in hits], [], [], CheckOptions(), {},
+    )
+
+
+def test_paraphrase_highlight_does_not_hide_matches():
+    text = "aaaa bbbb cccc dddd eeee"
+    rendered = _render_document(highlight_report(text, owned=[(5, 9, 0)], excluded=[(15, 19, "引用")], hits=[(0, 24)]))
+    assert '<sup class="n">1</sup>bbbb</mark>' in rendered
+    assert '<span class="ex">dddd</span>' in rendered
+    assert re.findall(r'<span class="para">(.*?)</span>', rendered) == ["aaaa ", " cccc ", " eeee"]
+
+
+def test_paraphrase_highlight_starting_inside_a_match():
+    text = "aaaa bbbb cccc"
+    rendered = _render_document(highlight_report(text, owned=[(0, 9, 2)], hits=[(5, 14)]))
+    assert '<sup class="n">3</sup>aaaa bbbb</mark>' in rendered
+    assert re.findall(r'<span class="para">(.*?)</span>', rendered) == [" cccc"]
 
 
 def test_re_adding_a_document_keeps_its_id_and_fingerprints(tmp_path):

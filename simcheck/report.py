@@ -93,10 +93,21 @@ def _render_document(report: Report) -> str:
         events.append((s, e, "own", rank))
     for s, e, _ in report.excluded_spans:
         events.append((s, e, "ex", None))
-    for hit in report.semantic_hits:
-        events.append((hit.q_start, hit.q_end, "para", None))
     # 同じ開始位置なら一致のハイライトを優先する
     priority = {"own": 0, "ex": 1, "para": 2}
+    events.sort(key=lambda ev: (ev[0], priority[ev[2]]))
+    # 言い換えの文に一致や除外が含まれていても隠さないよう、残りの部分にだけ点線を引く
+    solid = list(events)
+    for hit in report.semantic_hits:
+        at = hit.q_start
+        for s, e, _, _ in solid:
+            if s >= hit.q_end:
+                break
+            if s > at:
+                events.append((at, s, "para", None))
+            at = max(at, e)
+        if at < hit.q_end:
+            events.append((at, hit.q_end, "para", None))
     events.sort(key=lambda ev: (ev[0], priority[ev[2]]))
 
     parts, pos = [], 0

@@ -24,7 +24,7 @@ from retraction import evaluate_retraction
 from simcheck import engine
 from simcheck.engine import CheckOptions, check_document
 from simcheck.rerank import DEFAULT_MIN_GAIN
-from simcheck.semantic import DEFAULT_THRESHOLD, SemanticIndex
+from simcheck.semantic import DEFAULT_THRESHOLD
 from simcheck.store import Store
 
 LABELS = {
@@ -79,17 +79,6 @@ def _worker_init(tmp_dir: str):
 def _worker_run(job: tuple[Case, CheckOptions]) -> dict:
     case, options = job
     return run_case(case, _store, options, _tmp_dir)
-
-
-class _SharedIndex:
-    """言い換え検索の索引は約900MBあるので、毎回読み込まないようにする。"""
-    _index = None
-    exists = staticmethod(SemanticIndex.exists)
-
-    def __new__(cls):
-        if cls._index is None:
-            cls._index = SemanticIndex()
-        return cls._index
 
 
 def _pct(value, digits=1) -> str:
@@ -187,7 +176,6 @@ def main():
         paraphrases = load_paraphrases(args.split)
         cells = dict(previous["cells"]) if previous else {}
         DATA.mkdir(parents=True, exist_ok=True)
-        engine.SemanticIndex = _SharedIndex
         with tempfile.TemporaryDirectory(dir=DATA) as tmp_dir, ProcessPoolExecutor(
             args.workers, initializer=_worker_init, initargs=(tmp_dir,),
         ) as pool:

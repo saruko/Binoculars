@@ -3,6 +3,7 @@ import math
 import os
 import re
 import shutil
+import threading
 from pathlib import Path
 
 import faiss
@@ -15,6 +16,8 @@ from .textnorm import WORD_WEIGHT, tokenize
 MODEL_NAME = "BAAI/bge-m3"
 EMBED_DIM = 1024
 MAX_CHUNK_CHARS = 500
+# モデルは128トークンで打ち切る。日本語の文は約1.5字で1トークンになるので、ほぼすべての文が収まる長さにする
+MAX_CHUNK_CHARS_JA = 150
 MIN_SENTENCE_WEIGHT = 8 * WORD_WEIGHT
 BATCH_SIZE = 128
 DEFAULT_THRESHOLD = 0.85
@@ -32,7 +35,26 @@ PART_CHUNKS = 200_000
 
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9(“\"぀-鿿])|(?<=[。！？])|\n\s*\n|\f")
 _JAPANESE = re.compile(r"[぀-ヿ㐀-鿿]")
+_CHUNK_BREAK = re.compile(r"[、，,;；:：\s]")
 _model = None
+_shared_index = None
+_shared_index_lock = threading.Lock()
+
+
+def _split_long(text: str, s: int, e: int) -> list[tuple[int, int]]:
+    """長い文の後半が検索から漏れないよう、モデルに収まる長さに分ける。重ねないので、同じ箇所を二重に挙げない。"""
+    pieces = []
+    while True:
+        limit = MAX_CHUNK_CHARS_JA if is_japanese(text[s:s + MAX_CHUNK_CHARS]) else MAX_CHUNK_CHARS
+        if e - s <= limit:
+            pieces.append((s, e))
+            return pieces
+        # 語や句の途中で切らない。切れ目がなければ長さで切る
+        cut = s + limit
+        for m in _CHUNK_BREAK.finditer(text, s + limit // 2, s + limit):
+            cut = m.end()
+        pieces.append((s, cut))
+        s = cut
 
 
 def sentence_spans(text: str) -> list[tuple[int, int]]:
@@ -44,11 +66,10 @@ def sentence_spans(text: str) -> list[tuple[int, int]]:
         pos = m.end()
     spans.append((pos, len(text)))
     result = []
-    for s, e in spans:
-        if e - s > MAX_CHUNK_CHARS:
-            e = s + MAX_CHUNK_CHARS
-        if sum(tokenize(text[s:e]).weights) >= MIN_SENTENCE_WEIGHT:
-            result.append((s, e))
+    for span in spans:
+        for s, e in _split_long(text, *span):
+            if sum(tokenize(text[s:e]).weights) >= MIN_SENTENCE_WEIGHT:
+                result.append((s, e))
     return result
 
 
@@ -345,3 +366,22 @@ class SemanticIndex:
             if english.size:
                 consider(english, self.ja_index, self.ja_chunks, cross_threshold, CROSS_SEARCH_K, keep_existing=True)
         return results
+
+
+def _index_signature(root: Path, pubmed_root: Path) -> list:
+    files = [root / "vectors.npy", root / "chunks.npy", root / "chunks_ja.npy",
+             pubmed_root / "index.faiss", pubmed_root / "chunks.npy"]
+    return [(path, path.stat().st_mtime_ns if path.exists() else None) for path in files]
+
+
+def shared_index(root: str | Path = DATA_DIR / "semantic", pubmed_root: str | Path = DATA_DIR / "semantic_pubmed") -> SemanticIndex:
+    """読み込み済みの索引を返す。大きくて読み込みに時間がかかるので、ファイルが変わるまで使い回す。"""
+    global _shared_index
+    root, pubmed_root = Path(root), Path(pubmed_root)
+    signature = _index_signature(root, pubmed_root)
+    with _shared_index_lock:
+        if _shared_index is None or _shared_index[0] != signature:
+            # 新旧の索引が同時にメモリに載らないよう、先に手放す
+            _shared_index = None
+            _shared_index = (signature, SemanticIndex(root, pubmed_root))
+        return _shared_index[1]

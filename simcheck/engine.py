@@ -11,7 +11,7 @@ from .integrity import check_integrity
 from .pdfcheck import check_rendered_text
 from .sections import quote_spans, spans_of
 from .rerank import DEFAULT_MIN_GAIN, RERANK_MARGIN, get_scorer, source_context
-from .semantic import DEFAULT_THRESHOLD, SemanticIndex, is_japanese, sentence_spans
+from .semantic import DEFAULT_THRESHOLD, SemanticIndex, is_japanese, sentence_spans, shared_index
 from .store import Doc, Store
 from .textnorm import WORD_WEIGHT, Tokens, shingle_hashes, tokenize, winnow
 
@@ -299,7 +299,7 @@ def _semantic_pass(text, q: Tokens, token_covered, store: Store, excluded_ids, o
     if not targets:
         return []
 
-    index = SemanticIndex()
+    index = shared_index()
     # 再評価するときは候補を広めに取り、話題が同じだけの文は再評価で落とす
     threshold = options.semantic_threshold - RERANK_MARGIN if options.use_rerank else options.semantic_threshold
     found = index.search([text[s:e] for s, e in targets], threshold, excluded_ids)
@@ -313,9 +313,10 @@ def _semantic_pass(text, q: Tokens, token_covered, store: Store, excluded_ids, o
 
 def _rerank(pairs, text: str, docs, options: CheckOptions, notices: list[str]):
     kept = []
-    scorer = None
-    for (s, e), (doc_id, ss, se, score) in pairs:
-        pair = ((s, e), (doc_id, ss, se, score))
+    scorer, load_tried = None, False
+    n_failed, first_error = 0, None
+    for pair in pairs:
+        (s, e), (doc_id, ss, se, score) = pair
         query_ja, source_ja = is_japanese(text[s:e]), is_japanese(docs[doc_id].text[ss:se])
         if query_ja != source_ja:
             # 言語をまたぐ組は別の閾値で選んであり、再評価は英語の文でしか確かめていない
@@ -325,13 +326,22 @@ def _rerank(pairs, text: str, docs, options: CheckOptions, notices: list[str]):
             if score >= options.semantic_threshold:
                 kept.append(pair)
             continue
-        if scorer is None:
-            try:
+        gain = None
+        try:
+            # 読み込みは失敗しても1回だけ試す。文ごとの失敗（GPUのメモリ不足など）は次の文で回復することがある
+            if not load_tried:
+                load_tried = True
                 scorer = get_scorer()
-            except Exception as e_:
-                notices.append(f"言い換えの候補の再評価に失敗したので、類似度だけで判定しました: {e_}")
-                return [p for p in pairs if p[1][3] >= options.semantic_threshold]
-        context = source_context(docs[doc_id].text, ss, se)
-        if scorer.mean_gain(context, text[s:e]) >= options.rerank_min_gain:
+            if scorer is not None:
+                gain = scorer.mean_gain(source_context(docs[doc_id].text, ss, se), text[s:e])
+        except Exception as e_:
+            first_error = first_error or e_
+        if gain is None:
+            n_failed += 1
+            if score >= options.semantic_threshold:
+                kept.append(pair)
+        elif gain >= options.rerank_min_gain:
             kept.append(pair)
+    if n_failed:
+        notices.append(f"言い換えの候補 {n_failed} 件は再評価に失敗したので、類似度だけで判定しました: {first_error}")
     return kept
