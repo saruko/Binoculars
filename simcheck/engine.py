@@ -300,6 +300,8 @@ def _semantic_pass(text, q: Tokens, token_covered, store: Store, excluded_ids, o
         return []
 
     index = shared_index()
+    if index.stale_chunking:
+        notices.append("言い換え検索の索引は古い文の分け方で作られているため、出典の長い文の後半は検索していません。index-semantic で作り直すと検索できます。")
     # 再評価するときは候補を広めに取り、話題が同じだけの文は再評価で落とす
     threshold = options.semantic_threshold - RERANK_MARGIN if options.use_rerank else options.semantic_threshold
     found = index.search([text[s:e] for s, e in targets], threshold, excluded_ids)

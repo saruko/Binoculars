@@ -18,6 +18,8 @@ EMBED_DIM = 1024
 MAX_CHUNK_CHARS = 500
 # モデルは128トークンで打ち切る。日本語の文は約1.5字で1トークンになるので、ほぼすべての文が収まる長さにする
 MAX_CHUNK_CHARS_JA = 150
+# 文の分け方を変えたら上げる。作成済みの索引が古い分け方かを判定するため（1は長い文の後半を捨てていた版）
+CHUNKING_VERSION = 2
 MIN_SENTENCE_WEIGHT = 8 * WORD_WEIGHT
 BATCH_SIZE = 128
 DEFAULT_THRESHOLD = 0.85
@@ -42,16 +44,20 @@ _shared_index_lock = threading.Lock()
 
 
 def _split_long(text: str, s: int, e: int) -> list[tuple[int, int]]:
-    """長い文の後半が検索から漏れないよう、モデルに収まる長さに分ける。重ねないので、同じ箇所を二重に挙げない。"""
+    """長い文の後半が検索から漏れないよう、モデルに収まる長さに分ける。重ねないので、同じ箇所を二重に挙げない。
+
+    末尾だけが短くなると最小語数に届かず捨てられるので、ほぼ同じ長さに分ける。
+    """
     pieces = []
     while True:
-        limit = MAX_CHUNK_CHARS_JA if is_japanese(text[s:s + MAX_CHUNK_CHARS]) else MAX_CHUNK_CHARS
+        limit = MAX_CHUNK_CHARS_JA if is_japanese(text[s:min(s + MAX_CHUNK_CHARS, e)]) else MAX_CHUNK_CHARS
         if e - s <= limit:
             pieces.append((s, e))
             return pieces
+        size = math.ceil((e - s) / math.ceil((e - s) / limit))
         # 語や句の途中で切らない。切れ目がなければ長さで切る
-        cut = s + limit
-        for m in _CHUNK_BREAK.finditer(text, s + limit // 2, s + limit):
+        cut = s + size
+        for m in _CHUNK_BREAK.finditer(text, s + size // 2, s + size):
             cut = m.end()
         pieces.append((s, cut))
         s = cut
@@ -128,7 +134,7 @@ def build_index(store: Store, root: str | Path = DATA_DIR / "semantic", progress
     np.save(root / "vectors.npy", vectors)
     chunk_array = np.array(chunks, dtype=np.int64).reshape(-1, 3)
     np.save(root / "chunks.npy", chunk_array)
-    (root / "info.json").write_text(json.dumps({"model": MODEL_NAME, "chunks": len(chunks)}), encoding="utf-8")
+    _write_info(root, len(chunks), CHUNKING_VERSION)
     build_language_map(store, root)
     return {"docs": len(doc_ids), "chunks": len(chunks)}
 
@@ -177,14 +183,26 @@ def _add_documents(store: Store, index, doc_ids: list[int], progress) -> list[tu
     return chunks
 
 
-def _write_part(root: Path, index, chunks: np.ndarray):
+def _write_info(root: Path, n_chunks: int, chunking: int):
+    (root / "info.json").write_text(
+        json.dumps({"model": MODEL_NAME, "chunks": n_chunks, "chunking": chunking}), encoding="utf-8",
+    )
+
+
+def _chunking_of(root: Path) -> int:
+    """索引を作った文の分け方を返す。記録がなければ、記録を始める前の最初の版とみなす。"""
+    path = Path(root) / "info.json"
+    return json.loads(path.read_text(encoding="utf-8")).get("chunking", 1) if path.exists() else 1
+
+
+def _write_part(root: Path, index, chunks: np.ndarray, chunking: int):
     # 途中で止まっても元の索引が残るよう、書き終えてから置き換える
     faiss.write_index(index, str(root / "index.faiss.tmp"))
     os.replace(root / "index.faiss.tmp", root / "index.faiss")
     with open(root / "chunks.npy.tmp", "wb") as f:
         np.save(f, chunks)
     os.replace(root / "chunks.npy.tmp", root / "chunks.npy")
-    (root / "info.json").write_text(json.dumps({"model": MODEL_NAME, "chunks": len(chunks)}), encoding="utf-8")
+    _write_info(root, len(chunks), chunking)
 
 
 def build_pubmed_index(store: Store, root: str | Path = DATA_DIR / "semantic_pubmed", max_docs: int = MAX_PUBMED_DOCS,
@@ -196,7 +214,7 @@ def build_pubmed_index(store: Store, root: str | Path = DATA_DIR / "semantic_pub
     doc_ids = store.iter_doc_ids("pubmed")[:max_docs]
     index = faiss.IndexScalarQuantizer(EMBED_DIM, faiss.ScalarQuantizer.QT_8bit, faiss.METRIC_INNER_PRODUCT)
     chunks = _add_documents(store, index, doc_ids, progress)
-    _write_part(root, index, np.array(chunks, dtype=np.int64).reshape(-1, 3))
+    _write_part(root, index, np.array(chunks, dtype=np.int64).reshape(-1, 3), CHUNKING_VERSION)
     return {"docs": len(doc_ids), "chunks": len(chunks)}
 
 
@@ -289,7 +307,8 @@ def _build_from_parts(root: Path, progress) -> int:
             index.add(part["vectors"].astype(np.float32))
             chunks.append(part["chunks"])
         progress(f"  追加 {done}/{len(paths)}")
-    _write_part(root, index, np.concatenate(chunks))
+    # 保存済みの文は作り直さないので、古い分け方の索引に足しても古いままとして扱う
+    _write_part(root, index, np.concatenate(chunks), _chunking_of(root))
     return total
 
 
@@ -298,6 +317,8 @@ def extend_index(store: Store, doc_ids: list[int], root: str | Path = DATA_DIR /
     root = Path(root)
     parts = root / "parts"
     parts.mkdir(exist_ok=True)
+    if _chunking_of(root) != CHUNKING_VERSION:
+        progress("  注意: 今の索引は古い文の分け方で作られています。追加した文とは分け方が混ざります")
     if not any(parts.glob("*.npz")):
         # 今の索引の中身を最初の部分にする。量子化した値から戻すので、符号化し直すより精度はわずかに落ちる
         index = faiss.read_index(str(root / "index.faiss"))
@@ -315,6 +336,7 @@ def extend_index(store: Store, doc_ids: list[int], root: str | Path = DATA_DIR /
 class SemanticIndex:
     def __init__(self, root: str | Path = DATA_DIR / "semantic", pubmed_root: str | Path = DATA_DIR / "semantic_pubmed"):
         root, pubmed_root = Path(root), Path(pubmed_root)
+        self.stale_chunking = _chunking_of(root) != CHUNKING_VERSION
         self.chunks = np.load(root / "chunks.npy")
         vectors = np.load(root / "vectors.npy")
         self.index = faiss.IndexFlatIP(vectors.shape[1])
@@ -323,6 +345,7 @@ class SemanticIndex:
         self.parts = [(self.index, self.chunks)]
         if (pubmed_root / "index.faiss").exists():
             self.parts.append((faiss.read_index(str(pubmed_root / "index.faiss")), np.load(pubmed_root / "chunks.npy")))
+            self.stale_chunking = self.stale_chunking or _chunking_of(pubmed_root) != CHUNKING_VERSION
         # 英語の文と日本語の文の組だけ別の閾値で探す
         self.ja_index, self.ja_chunks = None, None
         if (root / "chunks_ja.npy").exists():
@@ -369,8 +392,8 @@ class SemanticIndex:
 
 
 def _index_signature(root: Path, pubmed_root: Path) -> list:
-    files = [root / "vectors.npy", root / "chunks.npy", root / "chunks_ja.npy",
-             pubmed_root / "index.faiss", pubmed_root / "chunks.npy"]
+    files = [root / "vectors.npy", root / "chunks.npy", root / "chunks_ja.npy", root / "info.json",
+             pubmed_root / "index.faiss", pubmed_root / "chunks.npy", pubmed_root / "info.json"]
     return [(path, path.stat().st_mtime_ns if path.exists() else None) for path in files]
 
 

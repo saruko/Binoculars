@@ -2,6 +2,7 @@ import csv
 import gc
 import gzip
 import hashlib
+import json
 import os
 import re
 import weakref
@@ -325,7 +326,8 @@ def add_during_compaction(monkeypatch, action):
     done = []
 
     def open_memmap(*args, **kwargs):
-        if not done:
+        # np.load(mmap_mode="r") も open_memmap を呼ぶので、統合の出力を作るときだけ割り込む
+        if kwargs.get("mode") == "w+" and not done:
             done.append(True)
             action()
         return real(*args, **kwargs)
@@ -363,17 +365,54 @@ def test_compact_gives_up_when_another_process_compacted_meanwhile(tmp_path, mon
         add_doc(s, "pmid:1", SOURCE_EN)
         add_doc(s, "pmid:2", SOURCE_JA)
         before = s.stats()["postings"]
-
-        def compact_elsewhere():
-            monkeypatch.undo()
-            other.compact("other")
-
-        add_during_compaction(monkeypatch, compact_elsewhere)
+        add_during_compaction(monkeypatch, lambda: other.compact("other"))
         assert s.compact() == 1
         stats = s.stats()
         assert stats["segments"] == 1 and stats["postings"] == before  # 指紋を二重に数えない
         assert len(list(s.seg_dir.glob("*.h.npy"))) == 1
         assert run(s, tmp_path, SOURCE_EN).sources[0].doc.ext_id == "pmid:1"
+
+
+def change_segments_before_opening(monkeypatch, action):
+    real = Store._open_segment
+    done = []
+
+    def open_segment(self, name):
+        if not done:
+            done.append(True)
+            action()
+        return real(self, name)
+
+    monkeypatch.setattr(Store, "_open_segment", open_segment)
+
+
+def test_compact_rereads_the_list_when_another_process_compacted_before_opening(tmp_path, monkeypatch):
+    with Store(tmp_path / "index") as s, Store(tmp_path / "index") as other:
+        add_doc(s, "pmid:1", SOURCE_EN)
+        add_doc(s, "pmid:2", SOURCE_JA)
+        change_segments_before_opening(monkeypatch, lambda: other.compact("other"))
+        assert s.compact() == 1
+        assert run(s, tmp_path, SOURCE_EN).sources[0].doc.ext_id == "pmid:1"
+
+
+def test_lookup_rereads_the_list_when_another_process_compacted_before_opening(tmp_path, monkeypatch):
+    with Store(tmp_path / "index") as s, Store(tmp_path / "index") as other:
+        add_doc(s, "pmid:1", SOURCE_EN)
+        add_doc(s, "pmid:2", SOURCE_JA)
+        wanted = s.id_for_ext("pmid:1")
+        change_segments_before_opening(monkeypatch, lambda: other.compact("other"))
+        assert wanted in {d for d, _ in s.lookup(fingerprints(SOURCE_EN), 10)}
+
+
+def test_missing_segment_file_is_still_an_error(tmp_path):
+    with Store(tmp_path / "index") as s:
+        add_doc(s, "pmid:1", SOURCE_EN)
+        add_doc(s, "pmid:2", SOURCE_JA)
+        s._segments = None
+        gc.collect()
+        (s.seg_dir / "pmid_1.h.npy").unlink()
+        with pytest.raises(FileNotFoundError):
+            s.compact()
 
 
 def test_common_fingerprints_are_ignored_for_candidates(tmp_path):
@@ -968,8 +1007,73 @@ def test_long_sentences_are_split_instead_of_cut():
     assert spans[-1][1] == len(japanese)
     assert all(japanese[e - 1] == "、" for _, e in spans[:-1])
 
-    assert semantic._split_long("x" * 1200, 0, 1200) == [(0, 500), (500, 1000), (1000, 1200)]  # 切れ目がなくても分ける
+    assert semantic._split_long("x" * 1200, 0, 1200) == [(0, 400), (400, 800), (800, 1200)]  # 切れ目がなくても分ける
     assert semantic.sentence_spans(SOURCE_EN) == [(0, len(SOURCE_EN))]  # 収まる文は分けない
+
+
+def test_split_keeps_the_tail_of_a_slightly_long_sentence():
+    japanese = "緑内障" * 51 + "進行した。"  # 158字
+    spans = semantic.sentence_spans(japanese)
+    assert spans[0][0] == 0 and spans[-1][1] == len(japanese)
+    assert all(a[1] == b[0] for a, b in zip(spans, spans[1:]))
+    assert max(e - s for s, e in spans) <= semantic.MAX_CHUNK_CHARS_JA
+
+
+def test_split_judges_the_language_within_the_sentence():
+    english = ("The macular thickness was measured repeatedly in this cohort, " * 4).strip() + "\n\n"
+    text = english + "緑内障の治療についての文章です。" * 30
+    assert semantic._split_long(text, 0, len(english)) == [(0, len(english))]
+
+
+def write_semantic_index(root, info=None):
+    root.mkdir()
+    np.save(root / "vectors.npy", np.eye(4, dtype=np.float32))
+    np.save(root / "chunks.npy", np.array([(i, 0, 10) for i in range(4)], dtype=np.int64))
+    if info is not None:
+        (root / "info.json").write_text(json.dumps(info), encoding="utf-8")
+
+
+def test_index_built_with_the_old_splitting_is_reported(tmp_path, store, monkeypatch):
+    old, new = tmp_path / "old", tmp_path / "new"
+    write_semantic_index(old, {"model": "m", "chunks": 4})
+    write_semantic_index(new, {"model": "m", "chunks": 4, "chunking": semantic.CHUNKING_VERSION})
+    assert semantic.SemanticIndex(old, tmp_path / "none").stale_chunking
+    assert not semantic.SemanticIndex(new, tmp_path / "none").stale_chunking
+
+    class FakeIndex:
+        stale_chunking = True
+
+        def search(self, texts, threshold, excluded):
+            return [None] * len(texts)
+
+    notices = []
+    monkeypatch.setattr(engine, "shared_index", FakeIndex)
+    q = tokenize(SOURCE_EN)
+    assert engine._semantic_pass(SOURCE_EN, q, [False] * len(q), store, set(), CheckOptions(), notices) == []
+    assert any("文の分け方" in n for n in notices)
+
+
+def test_extending_an_old_index_keeps_it_marked_as_old(tmp_path):
+    vectors = np.eye(semantic.EMBED_DIM, dtype=np.float32)[:4]
+    for name, info, expected in (
+        ("old", {"model": "m", "chunks": 4}, 1),
+        ("new", {"model": "m", "chunks": 4, "chunking": semantic.CHUNKING_VERSION}, semantic.CHUNKING_VERSION),
+    ):
+        root = tmp_path / name
+        (root / "parts").mkdir(parents=True)
+        (root / "info.json").write_text(json.dumps(info), encoding="utf-8")
+        semantic._save_vectors(root / "parts", 0, [(i, 0, 10) for i in range(4)], vectors)
+        semantic._build_from_parts(root, lambda _: None)
+        assert semantic._chunking_of(root) == expected
+
+
+def test_new_index_is_marked_with_the_current_splitting(tmp_path, monkeypatch):
+    monkeypatch.setattr(semantic, "encode", lambda texts: np.eye(semantic.EMBED_DIM, dtype=np.float32)[:len(texts)])
+    with Store(tmp_path / "fresh") as s:
+        add_doc(s, "pmid:1", SOURCE_EN, name="a")
+        root = tmp_path / "part"
+        semantic.build_pubmed_index(s, root, progress=lambda _: None)
+        assert semantic._chunking_of(root) == semantic.CHUNKING_VERSION
 
 
 def test_shared_index_is_reused_until_the_files_change(tmp_path):

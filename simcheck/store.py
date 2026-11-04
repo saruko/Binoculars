@@ -197,10 +197,22 @@ class Store:
 
     def _load_segments(self):
         if self._segments is None:
+            _, self._segments = self._open_current_segments()
+        return self._segments
+
+    def _open_current_segments(self):
+        """今の一覧のセグメントを開き、(名前, セグメント) を返す。"""
+        previous = None
+        while True:
             with self._lock:
                 names = [r[0] for r in self.conn.execute("SELECT name FROM segments")]
-            self._segments = [self._open_segment(n) for n in names]
-        return self._segments
+            try:
+                return names, [self._open_segment(n) for n in names]
+            except FileNotFoundError:
+                # 統合と削除は一覧を更新してからファイルを消す。一覧が変わらないのにないなら本当の欠損
+                if names == previous:
+                    raise
+                previous = names
 
     def _open_segment(self, name: str):
         return (
@@ -321,11 +333,9 @@ class Store:
         統合中に別のプロセスが登録したセグメントは、次の統合まで別に残す。
         """
         # 手元の一覧は古いことがあるので、統合するものを読み直して覚えておく
-        with self._lock:
-            names = [r[0] for r in self.conn.execute("SELECT name FROM segments")]
+        names, segments = self._open_current_segments()
         if len(names) <= 1:
             return len(names)
-        segments = [self._open_segment(n) for n in names]
         total = sum(h.shape[0] for h, _ in segments)
         # 続けて統合しても、統合元と同じ名前にならないようにする
         new_name = f"{name}_{time.time_ns()}"
