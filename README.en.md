@@ -16,7 +16,7 @@ The web UI and the documents linked from this page are in Japanese.
 
 | Feature | Description | Where to use it |
 |---|---|---|
-| Similarity check | Compares a document with PubMed abstracts, PMC full texts (CC-licensed only), and your own PDFs, and reports the matches in PDF and HTML | Similarity tab (「類似度チェック」), `check` command, GitHub Actions |
+| Similarity check | Compares a document with PubMed abstracts, PMC (PubMed Central) full texts (CC-licensed only), and your own PDFs, and reports the matches in PDF and HTML | Similarity tab (「類似度チェック」), `check` command, GitHub Actions |
 | Paraphrase candidates | Lists sentences that may be reworded, using sentence embeddings and reranking. They are not included in the similarity value | Similarity tab, `check` command |
 | Flags | Shows tortured phrases, citations of retracted papers, character manipulation, rendered-versus-extracted text mismatch, and citation overlap | Same as above |
 | Revision suggestions | An LLM suggests how to handle each matched sentence and drafts revisions, which are then checked mechanically. By default, the LLM runs on your computer | Revision tab (「修正案」) |
