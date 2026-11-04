@@ -1,0 +1,57 @@
+{
+ "root": "semantic_pubmed_pmc",
+ "code_hash": "950624a01a51",
+ "finished_at": "2026-11-04 12:35",
+ "cells": {
+  "llm_light/pmc": {
+   "docs": 20,
+   "n": 100,
+   "detected": 91,
+   "detected_rate": 0.91,
+   "detected_ci": [
+    0.8377378707781101,
+    0.9519274602313131
+   ],
+   "correct_source_rate": 0.88,
+   "semantic_rate": 0.5,
+   "semantic_ci": [
+    0.40383152963549296,
+    0.596168470364507
+   ],
+   "either_rate": 1.0,
+   "mean_coverage": 0.7838118060087206,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.10459730242618401,
+   "precision": 0.675774826059456,
+   "filler_semantic_per_1000": 3.326055461464689,
+   "seconds_per_doc": 17.074342286586763,
+   "semantic_any_rate": 0.52
+  },
+  "llm_heavy/pmc": {
+   "docs": 20,
+   "n": 100,
+   "detected": 0,
+   "detected_rate": 0.0,
+   "detected_ci": [
+    0.0,
+    0.03699349876899627
+   ],
+   "correct_source_rate": 0.0,
+   "semantic_rate": 0.94,
+   "semantic_ci": [
+    0.8752318448839114,
+    0.9722138761993719
+   ],
+   "either_rate": 0.94,
+   "mean_coverage": 0.06800654427264147,
+   "flagged_doc_rate": 0.0,
+   "flag_kinds": {},
+   "filler_match_rate": 0.10516864937661967,
+   "precision": 0.18060413354531002,
+   "filler_semantic_per_1000": 3.326055461464689,
+   "seconds_per_doc": 14.24890353679657,
+   "semantic_any_rate": 0.97
+  }
+ }
+}
