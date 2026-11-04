@@ -101,7 +101,7 @@ These values are for everything registered (about 28.4 million PubMed abstracts,
 | Merged fingerprints | About 23 GB |
 | Paraphrase index (6.41 million sentences) | About 7 GB |
 | Paraphrase partial results (for resuming and adding) | About 13 GB |
-| Checking a 7,636-word manuscript | About 14 seconds without the paraphrase search and about 20 seconds with it (loading adds about 20 seconds the first time) |
+| Checking a manuscript of about 7,000 words | About 14 seconds without the paraphrase search and about 20 seconds with it (loading adds about 20 seconds the first time) |
 
 ### Whether to add PMC full texts to the paraphrase search
 By default, the paraphrase search covers only your PDFs and the PubMed abstracts that have been indexed. It does not cover PMC body text. You can add it with `--add-pmc`, but this is not the default because the cost is high.
