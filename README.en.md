@@ -29,7 +29,7 @@ Manuscript content leaves your computer only if you choose an external API or Gi
 - Word is used to create the manuscript pages for DOCX files (the tool works without it, but [pages and lines will not match the manuscript](#reports)).
 - The full sources need about 100 GB of disk space. The baseline download takes about another 52 GB.
 
-The measurements in this repository were made on a PC with 62 GB of memory and 16 GB of GPU memory (GeForce RTX 5080).
+The measurements in this repository were made on a PC with 64 GB of memory and 16 GB of GPU memory (GeForce RTX 5080).
 
 ## Getting started
 1. Double-click `start.bat`.
