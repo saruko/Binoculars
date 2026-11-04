@@ -522,6 +522,8 @@ def test_pdf_report_falls_back_without_word(store, tmp_path, monkeypatch):
     from simcheck import pdfreport
 
     monkeypatch.setattr(pdfreport, "_word_to_pdf", lambda path, out: False)
+    # LibreOffice のある環境でも、組み直す経路を確かめる
+    monkeypatch.setattr(pdfreport, "_soffice_to_pdf", lambda path: None)
     path = tmp_path / "manuscript.docx"
     document = docx.Document()
     document.add_paragraph(SOURCE_EN)
