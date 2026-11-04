@@ -15,7 +15,7 @@ The original Binoculars implements a score for detecting AI-generated text. This
 | Similarity check | None | Added (fingerprint matching, PDF and HTML reports) |
 | Paraphrase candidates | None | Added (sentence embeddings and reranking) |
 | Flags | None | Added (tortured phrases, citations of retracted papers, character manipulation, rendered-versus-extracted text mismatch, citation overlap) |
-| Revision suggestions | None | Added (uses an LLM on your own computer) |
+| Revision suggestions | None | Added (uses an LLM on your own computer by default; an external API can be used if you agree) |
 | Detection evaluation | See the paper | Added (methods and results in `evaluation/`) |
 | Interface | Gradio demo | Web UI with three tabs, and GitHub Actions workflows |
 
@@ -25,7 +25,7 @@ The original code (`binoculars/`, `datasets/`, `experiments/`, `demo/`, `main.py
 The web UI has three tabs.
 
 - **Similarity check**: Compares a document with PubMed abstracts, PMC full texts (CC-licensed only), and your own PDFs, and reports the matching passages.
-- **Revision suggestions**: For each matched sentence, an LLM on your computer suggests how to handle it and drafts a revision.
+- **Revision suggestions**: For each matched sentence, an LLM suggests how to handle it and drafts a revision. By default, the LLM runs on your computer.
 - **Binoculars score**: Calculates a score for a text with the method from the ICLR 2024 paper *"Spotting LLMs With Binoculars: Zero-Shot Detection of Machine-Generated Text"*. It does not determine whether AI was used.
 
 To run the similarity check on GitHub Actions, see the [guide](docs/github-actions.md). **This repository is public, so do not put manuscripts in it.** To use Actions, create a separate private repository.
@@ -54,7 +54,7 @@ Run the commands with the Python in the virtual environment (`venv\Scripts\pytho
 | `index-semantic` | Builds the paraphrase search index for your PDFs. Run it again after registering the PDFs again |
 | `index-semantic --pubmed` | Builds the paraphrase search index for PubMed abstracts. Set the number of documents with `--max-docs` (the default is 100,000, taken from the documents registered first) |
 | `index-semantic --add-matching "regex"` | Adds PubMed abstracts whose title or journal name matches to the paraphrase search index. Build the index with `--pubmed` first It keeps partial results in `data/simcheck/semantic_pubmed/parts/`, so it resumes after an interruption |
-| `index-semantic --add-pmc` | Adds registered PMC full texts to the paraphrase search index |
+| `index-semantic --add-pmc` | Adds registered PMC full texts to the paraphrase search index. With everything registered, this gives 28.04 million sentences, an index of about 29 GB, partial results of about 55 GB, and a peak of about 38 GB of memory during a check. See the [evaluation results](evaluation/detection/results.md) (in Japanese) for the effect and cost |
 | `index-citations` | Builds the list used for the citation overlap check. Run it again after adding documents |
 | `add-pubmed-query "query"` | Registers PubMed abstracts that match a query (up to 10,000) |
 | `add-pmc-query "query"` | Registers CC-licensed PMC full texts that match a query. Queries with more than 10,000 results are retrieved in parts by publication month |
@@ -152,10 +152,29 @@ For each matched sentence, the tool suggests how to handle it (add a citation, q
 **A rewritten sentence still needs a citation if it uses the content of the source.** Do not aim simply to lower the similarity value, and review each item. Adopted sentences count as AI-assisted editing, so declare them according to the journal's rules.
 
 ### How to use
-1. Load a model in LM Studio and start the server. The intended local LLMs are Gemma 4, Qwen3.5, DeepSeek, and similar models. Quality has been checked only for the model described in the [evaluation results](evaluation/revise/results.md). The manuscript and source text are passed to this model, so do not connect to an external API.
+1. Prepare an LLM provider.
+
+   | Provider | Default URL | Setup |
+   |---|---|---|
+   | LM Studio | `http://127.0.0.1:1234/v1` | Load a model and start the server |
+   | Strata (Qwen3.8-Flash-Next and others) | `http://127.0.0.1:8080/v1` | Start it with `strata launch`. If you set a key, also set `STRATA_API_KEY` |
+   | llama.cpp | `http://127.0.0.1:9931/v1` | Start `llama-server`. If you change the port, change the URL too. If you set a key, also set `LLAMA_API_KEY` |
+   | Gemini API (sends data externally) | Fixed | Set the environment variable `GEMINI_API_KEY`. The default model is `gemini-3.8-flash` |
+   | Claude API (sends data externally) | Fixed | Set the environment variable `ANTHROPIC_API_KEY`. The default model is `claude-opus-5-5`, and usage is billed |
+
+   The intended local LLMs are Gemma 4, Qwen3.5, DeepSeek, Qwen3.8-Flash-Next, and similar models. Quality has been checked only for the model described in the [evaluation results](evaluation/revise/results.md). Only the LM Studio connection has been tried on a real server. Strata, llama.cpp, the Gemini API, and the Claude API have only been tested against simulated responses.
 2. In the revision suggestions tab (「修正案」), select a DOCX file and create the suggestions.
 3. Review the suggestions one sentence at a time, edit them if needed, and choose an action.
 4. Use the export button (「Wordに書き出す」) to create a copy with comments. The original file is not changed.
+
+### When you use an external API
+**The manuscript sentence, its neighbouring sentences, and the source title and excerpt are sent to an outside provider.** Before using it, check whether an unpublished manuscript may be sent, how the provider handles data, and what the target journal allows.
+
+- The default is an LLM on this computer. An external API is used only when you select it and tick the box that agrees to sending.
+- When the source is a local PDF, only its title is passed, not the excerpt, so that subscription text is not sent. Suggestions for those sentences may be weaker.
+- API keys are read from environment variables and are not entered on screen. The URLs of external APIs cannot be changed.
+- A local provider cannot be pointed at a URL outside this computer.
+- The Claude API request uses `fallbacks`, which retries on another model if a safety classifier declines the request.
 
 ### Checks on suggestions
 Instead of relying on the LLM's own report, each suggestion is checked on the following points. Suggestions that fail are still shown, but they are placed last with the problems stated.

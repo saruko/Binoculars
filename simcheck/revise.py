@@ -1,6 +1,7 @@
-"""類似度チェックで一致した文について、対応方法と修正案をローカルLLMで作り、機械的に検査する。
+"""類似度チェックで一致した文について、対応方法と修正案をLLMで作り、機械的に検査する。
 
-原稿と出典の本文をLLMに渡すので、接続先はこのPC内のLM Studioを前提にする。GitHub版からは使わない。
+原稿と出典の本文をLLMに渡すので、既定の接続先はこのPC内のサーバーに限る。
+外部のAPIは、著者が送信に同意したときだけ使う。GitHub版からは使わない。
 """
 import json
 import os
@@ -8,6 +9,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -17,6 +19,40 @@ from .store import Doc, Store
 from .textnorm import WORD_WEIGHT, shingle_hashes, tokenize, winnow
 
 DEFAULT_URL = "http://127.0.0.1:1234/v1"
+
+
+@dataclass(frozen=True, slots=True)
+class Provider:
+    label: str
+    url: str
+    # 空ならサーバーの一覧の先頭を使う
+    model: str = ""
+    key_env: str = ""
+    external: bool = False
+    # 思考を切れないモデルがあるAPIでは指定しない
+    reasoning_effort: str | None = "none"
+    # 思考にもトークンを使うAPIでは多めにする
+    max_tokens: int = 1500
+
+
+PROVIDERS = {
+    "lmstudio": Provider("LM Studio", DEFAULT_URL),
+    "strata": Provider("Strata", "http://127.0.0.1:8080/v1", key_env="STRATA_API_KEY"),
+    "llamacpp": Provider("llama.cpp", "http://127.0.0.1:9931/v1", key_env="LLAMA_API_KEY"),
+    "gemini": Provider(
+        "Gemini API", "https://generativelanguage.googleapis.com/v1beta/openai", "gemini-3.8-flash", "GEMINI_API_KEY",
+        external=True, reasoning_effort=None, max_tokens=16000,
+    ),
+    "claude": Provider(
+        "Claude API", "https://api.anthropic.com", "claude-opus-5-5", "ANTHROPIC_API_KEY",
+        external=True, reasoning_effort=None, max_tokens=16000,
+    ),
+}
+_CLAUDE = PROVIDERS["claude"]
+_LOOPBACK = {"127.0.0.1", "localhost", "::1"}
+_CLAUDE_FALLBACK_BETA = "server-side-fallback-2026-07-01"
+# 拒否されたときに別のモデルでやり直す機能と effort の指定が使えるモデル
+_CLAUDE_FALLBACK_MODELS = {"claude-fable-5-1", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5"}
 ACTIONS = {
     "keep": "定型句の可能性が高い（同じ表現が多くの文献にあります）",
     "cite": "引用を追加する",
@@ -89,6 +125,7 @@ _SCHEMA = {
         "candidates": {"type": "array", "items": {"type": "string"}},
     },
     "required": ["action", "reason", "candidates"],
+    "additionalProperties": False,
 }
 
 
@@ -338,54 +375,103 @@ def similarities(original: str, candidates: list[str]) -> list[float | None]:
     return [float(vectors[0] @ vector) for vector in vectors[1:]]
 
 
-def available_model(url: str, client: httpx.Client | None = None) -> str:
+def _headers(provider: Provider) -> dict:
+    key = os.environ.get(provider.key_env) if provider.key_env else None
+    return {"Authorization": f"Bearer {key}"} if key else {}
+
+
+def available_model(url: str, client: httpx.Client | None = None, provider: Provider = PROVIDERS["lmstudio"]) -> str:
+    if provider.model:
+        return provider.model
     own = client is None
     client = client or httpx.Client(timeout=30)
     try:
-        response = client.get(f"{url.rstrip('/')}/models")
+        response = client.get(f"{url.rstrip('/')}/models", headers=_headers(provider))
         response.raise_for_status()
         models = [m["id"] for m in response.json()["data"] if "embed" not in m["id"].lower()]
     except (httpx.HTTPError, KeyError, TypeError, ValueError) as e:
-        raise LLMUnavailable(f"LM Studio に接続できません（{url}）。サーバーを起動してください。") from e
+        raise LLMUnavailable(f"{provider.label} に接続できません（{url}）。サーバーを起動してください。") from e
     finally:
         if own:
             client.close()
     if not models:
-        raise LLMUnavailable("LM Studio に使えるモデルがありません。モデルを導入してください。")
+        raise LLMUnavailable(f"{provider.label} に使えるモデルがありません。モデルを導入してください。")
     return models[0]
 
 
-def _prompt(target: Target) -> str:
+def _prompt(target: Target, provider: Provider = PROVIDERS["lmstudio"]) -> str:
+    # 手元のPDFには購読誌の本文が含まれるので、外部のAPIには渡さない
+    withheld = provider.external and target.source.source == "library"
     return json.dumps({
         "previous_sentence": target.before,
         "sentence": target.sentence,
         "next_sentence": target.after,
         "source_title": target.source.title or "",
-        "source_passage": target.excerpt,
+        "source_passage": "" if withheld else target.excerpt,
     }, ensure_ascii=False)
 
 
-def request_suggestion(client: httpx.Client, url: str, model: str, target: Target) -> dict:
+def _complete_openai(client: httpx.Client, url: str, model: str, target: Target, provider: Provider) -> tuple[str | None, str]:
     payload = {
         "model": model,
-        "messages": [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": _prompt(target)}],
+        "messages": [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": _prompt(target, provider)}],
         "temperature": 0.4,
-        "max_tokens": 1500,
-        "reasoning_effort": "none",
+        "max_tokens": provider.max_tokens,
         "response_format": {
             "type": "json_schema",
             "json_schema": {"name": "suggestion", "strict": True, "schema": _SCHEMA},
         },
     }
+    if provider.reasoning_effort:
+        payload["reasoning_effort"] = provider.reasoning_effort
+    response = client.post(f"{url.rstrip('/')}/chat/completions", json=payload, headers=_headers(provider))
+    if response.status_code in (401, 403):
+        raise LLMUnavailable(f"{provider.label} の認証に失敗しました。APIキー（{provider.key_env}）を確認してください。")
+    # Strata は形式に合わない応答を 502 で返す
+    if response.status_code == 502:
+        return None, "応答がJSONではありませんでした"
+    response.raise_for_status()
+    choice = response.json()["choices"][0]
+    if choice.get("finish_reason") != "stop":
+        return None, f"生成が途中で終わりました（{choice.get('finish_reason')}）"
+    return choice["message"].get("content") or "", ""
+
+
+def _complete_claude(client, model: str, target: Target) -> tuple[str | None, str]:
+    import anthropic
+
+    options = {"format": {"type": "json_schema", "schema": _SCHEMA}}
+    extra = {}
+    if model in _CLAUDE_FALLBACK_MODELS:
+        options["effort"] = "medium"
+        extra = {"betas": [_CLAUDE_FALLBACK_BETA], "fallbacks": "default"}
+    try:
+        response = client.beta.messages.create(
+            model=model, max_tokens=_CLAUDE.max_tokens, system=_SYSTEM,
+            messages=[{"role": "user", "content": _prompt(target, _CLAUDE)}],
+            output_config=options, **extra,
+        )
+    # 認証情報が見つからないとき、SDKは TypeError を出す
+    except (anthropic.AuthenticationError, anthropic.PermissionDeniedError, TypeError) as e:
+        raise LLMUnavailable(f"{_CLAUDE.label} の認証に失敗しました。APIキー（{_CLAUDE.key_env}）を確認してください。") from e
+    except anthropic.APIError as e:
+        raise ValueError(str(e)) from e
+    if response.stop_reason != "end_turn":
+        return None, f"生成が途中で終わりました（{response.stop_reason}）"
+    return next((block.text for block in response.content if block.type == "text"), ""), ""
+
+
+def request_suggestion(client, url: str, model: str, target: Target, provider: Provider = PROVIDERS["lmstudio"]) -> dict:
     last_error = ""
     for _ in range(_ATTEMPTS):
-        response = client.post(f"{url.rstrip('/')}/chat/completions", json=payload)
-        response.raise_for_status()
-        choice = response.json()["choices"][0]
-        if choice.get("finish_reason") != "stop":
-            last_error = f"生成が途中で終わりました（{choice.get('finish_reason')}）"
+        if provider is _CLAUDE:
+            answer, error = _complete_claude(client, model, target)
+        else:
+            answer, error = _complete_openai(client, url, model, target, provider)
+        if answer is None:
+            last_error = error
             continue
-        content = _THINK.sub("", choice["message"].get("content") or "").strip()
+        content = _THINK.sub("", answer).strip()
         try:
             parsed = json.loads(content)
         except ValueError:
@@ -399,14 +485,15 @@ def request_suggestion(client: httpx.Client, url: str, model: str, target: Targe
     raise ValueError(last_error)
 
 
-def build_suggestion(client: httpx.Client, url: str, model: str, target: Target, store: Store | None) -> Suggestion:
+def build_suggestion(client, url: str, model: str, target: Target, store: Store | None,
+                     provider: Provider = PROVIDERS["lmstudio"]) -> Suggestion:
     suggestion = Suggestion(target)
     if is_common_wording(target.sentence, store):
         suggestion.action = "keep"
         suggestion.reason = "一致した表現が照合先の多くの文献に現れます。内容に固有の情報を含まないか確認してください。"
         return suggestion
     try:
-        parsed = request_suggestion(client, url, model, target)
+        parsed = request_suggestion(client, url, model, target, provider)
     except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as e:
         suggestion.error = f"修正案を作れませんでした: {e}"
         return suggestion
@@ -429,19 +516,51 @@ def build_suggestion(client: httpx.Client, url: str, model: str, target: Target,
     return suggestion
 
 
-def build_suggestions(report: Report, store: Store | None, url: str = DEFAULT_URL, model: str | None = None,
-                      client: httpx.Client | None = None, progress=None) -> tuple[list[Suggestion], str]:
-    url = url or os.environ.get("LMSTUDIO_URL") or DEFAULT_URL
+def _resolve_url(provider: Provider, url: str) -> str:
+    # 外部のAPIは、APIキーを渡す先を変えられないようにする
+    if provider.external:
+        return provider.url
+    url = url or (os.environ.get("LMSTUDIO_URL") if provider is PROVIDERS["lmstudio"] else None) or provider.url
+    if urlsplit(url).hostname not in _LOOPBACK:
+        raise LLMUnavailable(f"{provider.label} の接続先はこのPC内に限ります（{url}）。外部に送る場合は外部のAPIを選んでください。")
+    return url
+
+
+def _check_external(provider: Provider, send_externally: bool):
+    if not provider.external:
+        return
+    if not send_externally:
+        raise LLMUnavailable(f"{provider.label} を使うには、原稿の文を外部に送ることへの同意が必要です。")
+    # Claude はSDKが他の認証情報も探すので、ここでは確かめない
+    if provider is not _CLAUDE and not os.environ.get(provider.key_env):
+        raise LLMUnavailable(f"環境変数 {provider.key_env} にAPIキーを設定してください。")
+
+
+def _new_client(provider: Provider):
+    if provider is not _CLAUDE:
+        return httpx.Client(timeout=_TIMEOUT)
+    import anthropic
+
+    return anthropic.Anthropic(timeout=_TIMEOUT)
+
+
+def build_suggestions(report: Report, store: Store | None, url: str = "", model: str | None = None,
+                      client=None, progress=None, provider: str = "lmstudio",
+                      send_externally: bool = False) -> tuple[list[Suggestion], str]:
+    chosen = PROVIDERS[provider]
+    _check_external(chosen, send_externally)
+    url = _resolve_url(chosen, url)
     own = client is None
-    client = client or httpx.Client(timeout=_TIMEOUT)
+    client = client or _new_client(chosen)
     try:
-        model = model or os.environ.get("LMSTUDIO_MODEL") or available_model(url, client)
+        environment_model = os.environ.get("LMSTUDIO_MODEL") if provider == "lmstudio" else None
+        model = model or environment_model or available_model(url, client, chosen)
         targets = find_targets(report)
         suggestions = []
         for i, target in enumerate(targets):
             if progress:
                 progress(i, len(targets))
-            suggestions.append(build_suggestion(client, url, model, target, store))
+            suggestions.append(build_suggestion(client, url, model, target, store, chosen))
         return suggestions, model
     finally:
         if own:

@@ -9,6 +9,7 @@ faiss-cpu
 sentence-transformers
 lxml
 httpx
+anthropic
 pytest
 fonttools
 rapidocr

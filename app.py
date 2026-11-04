@@ -13,7 +13,7 @@ from simcheck.engine import CheckOptions, check_document
 from simcheck.pdfreport import write_pdf
 from simcheck.report import render_html, write_html
 from simcheck.revise import (
-    ACTIONS, DECISIONS, DEFAULT_URL as REVISE_URL, LLMUnavailable, build_suggestions, check_candidate,
+    ACTIONS, DECISIONS, DEFAULT_URL as REVISE_URL, LLMUnavailable, PROVIDERS, build_suggestions, check_candidate,
     decision_comment, similarities, source_reference,
 )
 from simcheck.sections import strip_references
@@ -218,7 +218,17 @@ def _revise_view(state):
     )
 
 
-def run_revise(file_path, url, model, progress=gr.Progress()):
+def on_provider_change(provider):
+    chosen = PROVIDERS[provider]
+    return (
+        gr.update(value=chosen.url, interactive=not chosen.external),
+        gr.update(value="", placeholder=chosen.model or "空欄なら先頭のモデル"),
+        # 別の接続先に変えたら同意を引き継がない
+        gr.update(value=False, visible=chosen.external),
+    )
+
+
+def run_revise(file_path, provider, url, model, send_externally, progress=gr.Progress()):
     if not file_path:
         return (None, "ファイルを指定してください。", *_revise_view(None)[1:])
     with Store() as store:
@@ -227,6 +237,7 @@ def run_revise(file_path, url, model, progress=gr.Progress()):
             suggestions, used = build_suggestions(
                 report, store, url.strip(), model.strip() or None,
                 progress=lambda i, n: progress(i / max(n, 1), desc=f"{i + 1} / {n} 文"),
+                provider=provider, send_externally=send_externally,
             )
         except LLMUnavailable as e:
             return (None, str(e), *_revise_view(None)[1:])
@@ -319,7 +330,8 @@ with gr.Blocks(title="Binoculars") as demo:
         with gr.Tab("修正案"):
             gr.Markdown("# ✏️ 修正案")
             gr.Markdown(
-                "類似度チェックで一致した文について、対応方法と修正案をこのPC内のLM Studioで作ります。原稿は外部に送りません。"
+                "類似度チェックで一致した文について、対応方法と修正案をLLMで作ります。既定ではこのPC内のサーバーを使い、原稿は外部に送りません。"
+                "外部のAPIを選ぶと、原稿の文と前後の文、出典の題名と抜粋が外部に送られます（手元のPDFの本文は送りません）。"
                 "**書き直しても、出典の内容を使っている場合は引用が必要です**。類似度を下げることを目的にせず、1件ずつ内容を確認してください。"
                 "本文は自動で変更せず、選んだ対応をコメントとして付けたWordのコピーを作ります。"
             )
@@ -327,8 +339,16 @@ with gr.Blocks(title="Binoculars") as demo:
             with gr.Row():
                 with gr.Column(scale=1):
                     rev_file = gr.File(label="確認する文書（DOCX）", type="filepath", file_types=[".docx"])
-                    rev_url = gr.Textbox(label="LM Studio のURL", value=REVISE_URL)
-                    rev_model = gr.Textbox(label="モデル（空欄なら先頭のモデル）", value="")
+                    rev_provider = gr.Dropdown(
+                        label="LLMの接続先",
+                        choices=[(f"{p.label}（外部に送信）" if p.external else p.label, key) for key, p in PROVIDERS.items()],
+                        value="lmstudio",
+                    )
+                    rev_url = gr.Textbox(label="接続先のURL", value=REVISE_URL)
+                    rev_model = gr.Textbox(label="モデル", value="", placeholder="空欄なら先頭のモデル")
+                    rev_consent = gr.Checkbox(
+                        label="原稿の文と前後の文、出典の題名と抜粋を外部のAPIに送ることに同意します", value=False, visible=False,
+                    )
                     rev_btn = gr.Button("修正案を作成", variant="primary")
                     rev_status = gr.Textbox(label="進み具合", interactive=False)
                     rev_export = gr.Button("Wordに書き出す")
@@ -380,7 +400,10 @@ with gr.Blocks(title="Binoculars") as demo:
     )
     revise_view = [rev_status, rev_original, rev_source, rev_advice, rev_candidates, rev_checks, rev_edit, rev_decision]
     revise_inputs = [revise_state, rev_decision, rev_candidates, rev_edit]
-    rev_btn.click(fn=run_revise, inputs=[rev_file, rev_url, rev_model], outputs=[revise_state, *revise_view])
+    rev_provider.change(fn=on_provider_change, inputs=rev_provider, outputs=[rev_url, rev_model, rev_consent])
+    rev_btn.click(
+        fn=run_revise, inputs=[rev_file, rev_provider, rev_url, rev_model, rev_consent], outputs=[revise_state, *revise_view],
+    )
     rev_candidates.input(fn=select_candidate, inputs=[revise_state, rev_candidates], outputs=[rev_edit, rev_checks])
     rev_prev.click(fn=lambda *a: save_and_move(*a, -1), inputs=revise_inputs, outputs=[revise_state, *revise_view])
     rev_next.click(fn=lambda *a: save_and_move(*a, 1), inputs=revise_inputs, outputs=[revise_state, *revise_view])

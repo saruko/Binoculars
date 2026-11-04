@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 
 import docx
 import httpx
@@ -147,6 +148,165 @@ def test_unavailable_server_is_explained():
 
     with pytest.raises(LLMUnavailable, match="LM Studio"):
         available_model("http://127.0.0.1:1234/v1", httpx.Client(transport=httpx.MockTransport(handler)))
+
+
+GOOD_ANSWER = {"action": "cite", "reason": "引用が必要", "candidates": []}
+
+
+def recording_client(requests, answer=GOOD_ANSWER, status=200):
+    def handler(request):
+        requests.append(request)
+        if request.url.path.endswith("/models"):
+            return httpx.Response(200, json={"data": [{"id": "served-model"}]})
+        if status != 200:
+            return httpx.Response(status, json={"error": {"message": "failed"}})
+        return httpx.Response(200, json={"choices": [{"finish_reason": "stop", "message": {"content": json.dumps(answer)}}]})
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+@pytest.mark.parametrize("provider, port", [("strata", 8080), ("llamacpp", 9931)])
+def test_local_servers_use_their_own_address_and_listed_model(store, tmp_path, monkeypatch, provider, port):
+    monkeypatch.setattr(revise, "similarities", lambda original, texts: [None] * len(texts))
+    report = report_of(store, tmp_path, SOURCE)
+    requests = []
+    suggestions, model = build_suggestions(report, store, client=recording_client(requests), provider=provider)
+    assert model == "served-model"
+    assert suggestions[0].action == "cite"
+    assert {r.url.port for r in requests} == {port}
+    body = json.loads(requests[-1].content)
+    assert body["reasoning_effort"] == "none"
+    assert "authorization" not in requests[-1].headers
+
+
+def test_local_server_key_is_sent_only_when_set(store, tmp_path, monkeypatch):
+    monkeypatch.setattr(revise, "similarities", lambda original, texts: [None] * len(texts))
+    monkeypatch.setenv("STRATA_API_KEY", "local-key")
+    requests = []
+    build_suggestions(report_of(store, tmp_path, SOURCE), store, client=recording_client(requests), provider="strata")
+    assert requests[-1].headers["authorization"] == "Bearer local-key"
+
+
+@pytest.mark.parametrize("url", ["http://192.168.0.5:8080/v1", "https://example.com/v1"])
+def test_local_provider_refuses_address_outside_this_pc(store, tmp_path, url):
+    requests = []
+    with pytest.raises(LLMUnavailable, match="このPC内"):
+        build_suggestions(report_of(store, tmp_path, SOURCE), store, url=url, client=recording_client(requests), provider="strata")
+    assert requests == []
+
+
+@pytest.mark.parametrize("provider", ["gemini", "claude"])
+def test_external_api_needs_consent_before_anything_is_sent(store, tmp_path, monkeypatch, provider):
+    monkeypatch.setenv("GEMINI_API_KEY", "secret")
+    requests = []
+    with pytest.raises(LLMUnavailable, match="同意"):
+        build_suggestions(report_of(store, tmp_path, SOURCE), store, client=recording_client(requests), provider=provider)
+    assert requests == []
+
+
+def test_gemini_needs_key_and_ignores_a_typed_address(store, tmp_path, monkeypatch):
+    monkeypatch.setattr(revise, "similarities", lambda original, texts: [None] * len(texts))
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    report = report_of(store, tmp_path, SOURCE)
+    with pytest.raises(LLMUnavailable, match="GEMINI_API_KEY"):
+        build_suggestions(report, store, provider="gemini", send_externally=True, client=recording_client([]))
+    monkeypatch.setenv("GEMINI_API_KEY", "secret")
+    requests = []
+    _, model = build_suggestions(
+        report, store, url="https://example.com/v1", provider="gemini", send_externally=True, client=recording_client(requests),
+    )
+    assert model == "gemini-3.8-flash"
+    assert [r.url.host for r in requests] == ["generativelanguage.googleapis.com"]
+    assert requests[0].headers["authorization"] == "Bearer secret"
+    # 思考を切れないモデルがあるので指定しない
+    assert "reasoning_effort" not in json.loads(requests[0].content)
+
+
+def test_rejected_key_stops_instead_of_failing_every_sentence(store, tmp_path, monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "wrong")
+    with pytest.raises(LLMUnavailable, match="認証"):
+        build_suggestions(
+            report_of(store, tmp_path, SOURCE), store, provider="gemini", send_externally=True,
+            client=recording_client([], status=401),
+        )
+
+
+def test_strata_malformed_answer_is_retried_then_reported(store, tmp_path):
+    requests = []
+    suggestions, _ = build_suggestions(
+        report_of(store, tmp_path, SOURCE), store, provider="strata", model="m", client=recording_client(requests, status=502),
+    )
+    assert len(requests) == 2
+    assert "JSON" in suggestions[0].error
+
+
+class FakeClaude:
+    def __init__(self, stop_reason="end_turn", text=json.dumps(GOOD_ANSWER), error=None):
+        self.calls = []
+        self.stop_reason, self.text, self.error = stop_reason, text, error
+        self.beta = self
+        self.messages = self
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        if self.error:
+            raise self.error
+        return SimpleNamespace(
+            stop_reason=self.stop_reason,
+            content=[SimpleNamespace(type="thinking"), SimpleNamespace(type="text", text=self.text)],
+        )
+
+
+def test_claude_uses_structured_output_and_fallback(store, tmp_path, monkeypatch):
+    monkeypatch.setattr(revise, "similarities", lambda original, texts: [None] * len(texts))
+    claude = FakeClaude()
+    suggestions, model = build_suggestions(
+        report_of(store, tmp_path, SOURCE), store, provider="claude", send_externally=True, client=claude,
+    )
+    assert model == "claude-opus-5-5" and suggestions[0].action == "cite"
+    call = claude.calls[0]
+    assert call["fallbacks"] == "default" and call["betas"] == ["server-side-fallback-2026-07-01"]
+    assert call["output_config"]["format"]["schema"]["additionalProperties"] is False
+    assert "temperature" not in call
+
+
+def test_claude_model_without_fallback_is_not_sent_the_option(store, tmp_path, monkeypatch):
+    monkeypatch.setattr(revise, "similarities", lambda original, texts: [None] * len(texts))
+    claude = FakeClaude()
+    build_suggestions(
+        report_of(store, tmp_path, SOURCE), store, model="claude-haiku-5-5", provider="claude", send_externally=True, client=claude,
+    )
+    assert "fallbacks" not in claude.calls[0] and "effort" not in claude.calls[0]["output_config"]
+
+
+def test_claude_refusal_becomes_an_error_for_that_sentence(store, tmp_path):
+    claude = FakeClaude(stop_reason="refusal")
+    suggestions, _ = build_suggestions(
+        report_of(store, tmp_path, SOURCE), store, provider="claude", send_externally=True, client=claude,
+    )
+    assert suggestions[0].action is None and "refusal" in suggestions[0].error
+
+
+def test_claude_missing_credentials_stop_the_run(store, tmp_path):
+    with pytest.raises(LLMUnavailable, match="ANTHROPIC_API_KEY"):
+        build_suggestions(
+            report_of(store, tmp_path, SOURCE), store, provider="claude", send_externally=True,
+            client=FakeClaude(error=TypeError("Could not resolve authentication method")),
+        )
+
+
+def test_subscription_pdf_text_is_not_sent_to_external_api(tmp_path, monkeypatch):
+    monkeypatch.setattr(revise, "similarities", lambda original, texts: [None] * len(texts))
+    with Store(tmp_path / "index") as s:
+        add_doc(s, "library:1", SOURCE, source="library")
+        report = report_of(s, tmp_path, SOURCE)
+        claude = FakeClaude()
+        build_suggestions(report, s, provider="claude", send_externally=True, client=claude)
+        sent = json.loads(claude.calls[0]["messages"][0]["content"])
+        assert sent["source_passage"] == "" and sent["source_title"] == "Title of library:1"
+        requests = []
+        build_suggestions(report, s, provider="strata", client=recording_client(requests))
+        local = json.loads(json.loads(requests[-1].content)["messages"][1]["content"])
+        assert local["source_passage"]
 
 
 def manuscript(tmp_path):
