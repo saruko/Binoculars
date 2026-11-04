@@ -32,10 +32,10 @@ To run the similarity check on GitHub Actions, see the [guide](docs/github-actio
 
 ## Getting started
 1. Double-click `start.bat`.
-2. On the first run, it creates a virtual environment (Python 3.14) and installs the libraries, including PyTorch for CUDA 12.8.
+2. On the first run, it creates a virtual environment (Python 3.14) and installs the libraries, including PyTorch for CUDA 13.2.
 3. When setup finishes, your browser opens `http://127.0.0.1:7860`.
 
-`start.bat` installs PyTorch first from the CUDA 12.8 index (`--index-url`). `requirements.txt` does not name a PyTorch index, because with `--extra-index-url` pip installs whichever version is higher, including a package of the same name on PyPI.
+`start.bat` installs PyTorch first from the CUDA 13.2 index (`--index-url`). The next step installs its dependencies from PyPI (`--no-deps`), because the PyTorch index does not have some of the versions in `constraints.txt`. `requirements.txt` does not name a PyTorch index, because with `--extra-index-url` pip installs whichever version is higher, including a package of the same name on PyPI.
 
 Package versions are fixed in `constraints.txt`. To update them, raise the versions, run `pip-audit` and the tests, and then replace this file.
 

@@ -30,10 +30,10 @@ GitHub Actions で類似度チェックを動かす場合は [手順書](docs/gi
 
 ## 起動方法
 1. `start.bat` をダブルクリックします。
-2. 初回は仮想環境（Python 3.14）の構築と、CUDA 12.8 版 PyTorch を含むライブラリのインストールが自動で実行されます。
+2. 初回は仮想環境（Python 3.14）の構築と、CUDA 13.2 版 PyTorch を含むライブラリのインストールが自動で実行されます。
 3. 完了するとブラウザ（`http://127.0.0.1:7860`）が自動で開きます。
 
-PyTorch は `start.bat` が CUDA 12.8 版の配布元（`--index-url`）から先に入れます。`requirements.txt` には PyTorch の配布元を書いていません（`--extra-index-url` にすると、同じ名前の PyPI のパッケージと比べて版の高い方が入るため）。
+PyTorch は `start.bat` が CUDA 13.2 版の配布元（`--index-url`）から先に入れます。依存パッケージは次の手順で PyPI から入れます（`--no-deps`。PyTorch の配布元には `constraints.txt` の版がないものがあるため）。`requirements.txt` には PyTorch の配布元を書いていません（`--extra-index-url` にすると、同じ名前の PyPI のパッケージと比べて版の高い方が入るため）。
 
 インストールするパッケージの版は `constraints.txt` で固定しています。更新するときは、版を上げて `pip-audit` とテストを通してから、このファイルを置き換えてください。
 
