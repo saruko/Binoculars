@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from . import apikeys
 from .align import align, build_query_index
 from .engine import COMMON_DF, COMMON_SHARE, Report
 from .store import Doc, Store
@@ -376,7 +377,7 @@ def similarities(original: str, candidates: list[str]) -> list[float | None]:
 
 
 def _headers(provider: Provider) -> dict:
-    key = os.environ.get(provider.key_env) if provider.key_env else None
+    key = apikeys.get(provider.key_env) if provider.key_env else None
     return {"Authorization": f"Bearer {key}"} if key else {}
 
 
@@ -532,8 +533,8 @@ def _check_external(provider: Provider, send_externally: bool):
     if not send_externally:
         raise LLMUnavailable(f"{provider.label} を使うには、原稿の文を外部に送ることへの同意が必要です。")
     # Claude はSDKが他の認証情報も探すので、ここでは確かめない
-    if provider is not _CLAUDE and not os.environ.get(provider.key_env):
-        raise LLMUnavailable(f"環境変数 {provider.key_env} にAPIキーを設定してください。")
+    if provider is not _CLAUDE and not apikeys.get(provider.key_env):
+        raise LLMUnavailable(f"APIキー（{provider.key_env}）を設定してください。環境変数か、「APIキー」タブで保存できます。")
 
 
 def _new_client(provider: Provider):
@@ -541,7 +542,8 @@ def _new_client(provider: Provider):
         return httpx.Client(timeout=_TIMEOUT)
     import anthropic
 
-    return anthropic.Anthropic(timeout=_TIMEOUT)
+    # 保存したキーがなければ、SDKが環境変数などから探す
+    return anthropic.Anthropic(api_key=apikeys.get(_CLAUDE.key_env), timeout=_TIMEOUT)
 
 
 def build_suggestions(report: Report, store: Store | None, url: str = "", model: str | None = None,

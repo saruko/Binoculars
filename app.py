@@ -7,9 +7,10 @@ import torch
 import gradio as gr
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from simcheck import DATA_DIR
+from simcheck import DATA_DIR, apikeys
 from simcheck.docx_comments import Comment, write_comments
 from simcheck.engine import CheckOptions, check_document
+from simcheck.extract import SUPPORTED_SUFFIXES
 from simcheck.pdfreport import write_pdf
 from simcheck.report import render_html, write_html
 from simcheck.revise import (
@@ -163,7 +164,7 @@ def run_prediction(text):
 
 
 def run_similarity(file_path, exclude_references, exclude_quotes, exclude_methods, exclude_preprints,
-                   exclude_common, min_words, use_semantic, semantic_threshold, exclude_ids):
+                   exclude_common, min_words, use_semantic, semantic_threshold, exclude_ids, allowed_files, use_web):
     if not file_path:
         return "ファイルを指定してください。", "", None, gr.skip()
     options = CheckOptions(
@@ -176,6 +177,8 @@ def run_similarity(file_path, exclude_references, exclude_quotes, exclude_method
         use_semantic=use_semantic,
         semantic_threshold=semantic_threshold,
         exclude_ext_ids={x.strip() for x in exclude_ids.splitlines() if x.strip()},
+        allowed_paths=list(allowed_files or []),
+        use_web=use_web,
     )
     with Store() as store:
         report = check_document(file_path, store, options)
@@ -186,8 +189,30 @@ def run_similarity(file_path, exclude_references, exclude_quotes, exclude_method
         f"類似度 {report.score * 100:.1f}% / 一致した出典 {len(report.sources)} 件 / "
         f"言い換えの疑い {len(report.semantic_hits)} 件 / フラッグ {len(report.flags)} 件"
     )
+    if use_web:
+        summary += f" / Webで一致 {len(report.web_hits)} 件"
     # 参考文献を除いた本文をスコアのタブへ渡す
     return summary, render_html(report), [str(pdf), str(out)], strip_references(report.text).replace("\f", "\n")
+
+
+def _key_status() -> str:
+    rows = [f"| {label} | `{name}` | {state} |" for name, (label, state) in
+            ((n, (apikeys.KEYS[n], s)) for n, s in apikeys.status().items())]
+    return "| 用途 | 名前 | 状態 |\n|---|---|---|\n" + "\n".join(rows)
+
+
+def save_key(name, value):
+    try:
+        apikeys.save(name, value or "")
+    except (ValueError, apikeys.KeyStoreUnavailable) as e:
+        return str(e), _key_status(), gr.skip()
+    note = "保存しました。" + ("ただし環境変数が設定されているので、環境変数の値を使います。" if apikeys.status()[name] == "環境変数" else "")
+    return note, _key_status(), ""
+
+
+def delete_key(name):
+    apikeys.delete(name)
+    return "削除しました。", _key_status(), ""
 
 
 def _revise_view(state):
@@ -303,13 +328,13 @@ with gr.Blocks(title="Binoculars") as demo:
         with gr.Tab("類似度チェック"):
             gr.Markdown("# 📄 類似度チェック")
             gr.Markdown(
-                "PubMed抄録と手元のPDFを照合先にして、文書の一致箇所を確認します。処理はすべてこのPC内で行います。"
+                "PubMed抄録と手元のPDFを照合先にして、文書の一致箇所を確認します。Web照合を選んだときを除き、処理はすべてこのPC内で行います。"
                 "照合先にない文献との一致は検出できないため、値が低くても盗用がないことの証明にはなりません。"
             )
             with gr.Row():
                 with gr.Column(scale=1):
-                    sim_file = gr.File(label="確認する文書（PDF / DOCX / TXT）", type="filepath",
-                                       file_types=[".pdf", ".docx", ".txt", ".md"])
+                    sim_file = gr.File(label="確認する文書（PDF / DOCX / DOC / RTF / ODT / TXT）", type="filepath",
+                                       file_types=sorted(SUPPORTED_SUFFIXES))
                     sim_refs = gr.Checkbox(label="参考文献を除外", value=True)
                     sim_quotes = gr.Checkbox(label="引用符内を除外", value=True)
                     sim_methods = gr.Checkbox(label="方法セクションを除外", value=False)
@@ -321,6 +346,12 @@ with gr.Blocks(title="Binoculars") as demo:
                                                        label="言い換えの閾値（下げると候補が増え、誤検出も増える）")
                     sim_exclude = gr.Textbox(label="除外する出典ID（1行に1つ）", lines=2,
                                              placeholder="pmid:12345678")
+                    sim_allowed = gr.File(label="許可済みの文書（自分のプレプリントなど。一致する部分を除外）", type="filepath",
+                                          file_count="multiple", file_types=sorted(SUPPORTED_SUFFIXES))
+                    sim_web = gr.Checkbox(
+                        label="Web照合（照合先と一致しなかった文を Brave Search API で検索。原稿の文が外部に送られます）",
+                        value=False,
+                    )
                     sim_btn = gr.Button("確認を実行", variant="primary")
                 with gr.Column(scale=3):
                     sim_summary = gr.Textbox(label="結果", interactive=False)
@@ -366,6 +397,26 @@ with gr.Blocks(title="Binoculars") as demo:
                         rev_prev = gr.Button("前の文")
                         rev_next = gr.Button("次の文", variant="primary")
 
+        with gr.Tab("APIキー"):
+            gr.Markdown("# 🔑 APIキー")
+            gr.Markdown(
+                "外部のAPIのキーを Windows の資格情報マネージャーに保存します。環境変数が設定されていれば、そちらを優先します。"
+                "キーはこのPCのユーザーごとに保存され、画面には表示しません。"
+            )
+            with gr.Row():
+                with gr.Column(scale=1):
+                    key_name = gr.Dropdown(
+                        choices=[(f"{label}（{name}）", name) for name, label in apikeys.KEYS.items()],
+                        value="BRAVE_API_KEY", label="キー",
+                    )
+                    key_value = gr.Textbox(label="値", type="password")
+                    with gr.Row():
+                        key_save = gr.Button("保存", variant="primary")
+                        key_delete = gr.Button("削除")
+                    key_message = gr.Textbox(label="結果", interactive=False)
+                with gr.Column(scale=1):
+                    key_table = gr.Markdown(_key_status())
+
         with gr.Tab("Binocularsスコア"):
             gr.Markdown("# 🔍 Binocularsスコア")
             gr.Markdown(
@@ -392,10 +443,13 @@ with gr.Blocks(title="Binoculars") as demo:
                 with gr.Column():
                     html_output = gr.HTML(label="トークン単位のハイライト")
 
+    key_save.click(fn=save_key, inputs=[key_name, key_value], outputs=[key_message, key_table, key_value])
+    key_delete.click(fn=delete_key, inputs=[key_name], outputs=[key_message, key_table, key_value])
+    demo.load(fn=_key_status, outputs=[key_table])
     sim_btn.click(
         fn=run_similarity,
         inputs=[sim_file, sim_refs, sim_quotes, sim_methods, sim_preprints, sim_common, sim_min_words,
-                sim_semantic, sim_semantic_threshold, sim_exclude],
+                sim_semantic, sim_semantic_threshold, sim_exclude, sim_allowed, sim_web],
         outputs=[sim_summary, sim_html, sim_download, input_text],
     )
     revise_view = [rev_status, rev_original, rev_source, rev_advice, rev_candidates, rev_checks, rev_edit, rev_decision]

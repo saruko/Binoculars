@@ -1,5 +1,8 @@
+import codecs
 import hashlib
 import re
+import shutil
+import tempfile
 import unicodedata
 from collections import Counter
 from dataclasses import dataclass
@@ -12,7 +15,10 @@ from docx.text.hyperlink import Hyperlink
 from docx.text.paragraph import Paragraph
 from docx.text.run import Run
 
-SUPPORTED_SUFFIXES = {".pdf", ".docx", ".txt", ".md"}
+# Word か LibreOffice で DOCX に変換してから読む形式
+CONVERTED_SUFFIXES = {".doc", ".rtf", ".odt"}
+WORD_SUFFIXES = {".docx", *CONVERTED_SUFFIXES}
+SUPPORTED_SUFFIXES = {".pdf", ".txt", ".md", *WORD_SUFFIXES}
 _DOI_RE = re.compile(r"\b10\.\d{4,9}/[^\s\"<>]+")
 _BAD_TITLE_RE = re.compile(r"\.(?:pdf|indd|docx?|tex|dvi)\b|^untitled|^microsoft word", re.IGNORECASE)
 
@@ -86,7 +92,7 @@ def _paragraph_text(paragraph: Paragraph) -> str:
     return paragraph_pieces(paragraph)[1]
 
 
-def _extract_docx(path: Path) -> Extracted:
+def _extract_docx(path: Path, fallback_title: str | None = None) -> Extracted:
     d = docx.Document(str(path))
     # 表を末尾にまとめると参考文献の範囲に入ってしまうので、文書の順序どおりに読む
     parts = []
@@ -96,20 +102,58 @@ def _extract_docx(path: Path) -> Extracted:
                 parts.append(" ".join(cell.text for cell in row.cells))
         else:
             parts.append(_paragraph_text(block))
-    title = (d.core_properties.title or "").strip() or path.stem
+    title = (d.core_properties.title or "").strip() or fallback_title or path.stem
     return Extracted(unicodedata.normalize("NFC", "\n".join(parts)), title, None, 1)
 
 
+def _extract_converted(path: Path) -> Extracted:
+    from .office import soffice_convert, word_to_docx
+
+    work = Path(tempfile.mkdtemp())
+    source = work / f"input{path.suffix.lower()}"
+    try:
+        shutil.copy(path, source)
+        converted = work / "output.docx"
+        if not word_to_docx(source, converted):
+            converted = soffice_convert(source, "docx")
+        if converted is None:
+            raise ValueError(f"{path.suffix} の文書を読むには Word か LibreOffice が必要です。DOCXで保存し直して指定してください。")
+        return _extract_docx(converted, path.stem)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def decode_text(data: bytes) -> str:
+    for bom, encoding in ((codecs.BOM_UTF8, "utf-8-sig"), (codecs.BOM_UTF16_LE, "utf-16"), (codecs.BOM_UTF16_BE, "utf-16")):
+        if data.startswith(bom):
+            return data.decode(encoding, "replace")
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+    # Shift_JIS と EUC-JP はどちらとしても読めてしまうことがあるので、推定に任せる
+    try:
+        from charset_normalizer import from_bytes
+
+        best = from_bytes(data).best()
+    except ImportError:
+        best = None
+    if best is not None:
+        # ラテン文字の1バイトの文字コードは見分けにくいので、Windows で多い cp1252 を優先する
+        if best.encoding.startswith(("cp125", "latin", "iso8859", "mac_")):
+            try:
+                return data.decode("cp1252")
+            except UnicodeDecodeError:
+                pass
+        return str(best)
+    try:
+        return data.decode("cp932")
+    except UnicodeDecodeError:
+        return data.decode("utf-8", "replace")
+
+
 def _extract_text(path: Path) -> Extracted:
-    data = path.read_bytes()
-    for encoding in ("utf-8-sig", "cp932"):
-        try:
-            text = data.decode(encoding)
-            break
-        except UnicodeDecodeError:
-            continue
-    else:
-        text = data.decode("utf-8", "replace")
+    text = decode_text(path.read_bytes())
     # CRLF のままだと行単位の見出し検出が効かない
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     return Extracted(unicodedata.normalize("NFC", text), path.stem, None, 1)
@@ -122,6 +166,8 @@ def extract_document(path: str | Path) -> Extracted:
         return _extract_pdf(path)
     if suffix == ".docx":
         return _extract_docx(path)
+    if suffix in CONVERTED_SUFFIXES:
+        return _extract_converted(path)
     if suffix in {".txt", ".md"}:
         return _extract_text(path)
     raise ValueError(f"未対応の形式です: {suffix}（対応: {', '.join(sorted(SUPPORTED_SUFFIXES))}）")

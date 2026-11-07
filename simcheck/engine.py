@@ -13,7 +13,8 @@ from .sections import quote_spans, spans_of
 from .rerank import DEFAULT_MIN_GAIN, RERANK_MARGIN, get_scorer, source_context
 from .semantic import DEFAULT_THRESHOLD, SemanticIndex, is_japanese, sentence_spans, shared_index
 from .store import Doc, Store
-from .textnorm import WORD_WEIGHT, Tokens, shingle_hashes, tokenize, winnow
+from .textnorm import SHINGLE_WEIGHT, WORD_WEIGHT, Tokens, shingle_hashes, tokenize, winnow
+from .websearch import DEFAULT_MAX_QUERIES, target_sentences, web_pass
 
 NEAR_DUPLICATE_RATIO = 0.8
 # この文書数以上に現れる指紋を定型的とみなし、一致の大半が定型的なら定型表現として扱う
@@ -22,6 +23,9 @@ COMMON_SHARE = 0.8
 # 上位の候補とは別に、原稿のこのトークン数ごとに候補を確保する
 CANDIDATE_REGION_TOKENS = 100
 CANDIDATES_PER_REGION = 20
+# 言い換えの候補の出典の文で、許可済みの文書と共有する指紋がこの割合以上なら、許可済みの文書由来とみなす
+ALLOWED_SHARE = 0.5
+ALLOWED_LABEL = "許可済み文書"
 
 
 @dataclass(slots=True)
@@ -39,8 +43,13 @@ class CheckOptions:
     use_semantic: bool = True
     semantic_threshold: float = DEFAULT_THRESHOLD
     exclude_ext_ids: set[str] = field(default_factory=set)
+    # 自分のプレプリントなど、一致してよい文書。共有する部分を確認対象から除く
+    allowed_paths: list[str] = field(default_factory=list)
     use_rerank: bool = True
     rerank_min_gain: float = DEFAULT_MIN_GAIN
+    # 原稿の文を Brave に送って検索する。利用者が選んだときだけ使う
+    use_web: bool = False
+    web_max_queries: int = DEFAULT_MAX_QUERIES
 
 
 @dataclass(slots=True)
@@ -91,6 +100,7 @@ class Report:
     options: CheckOptions
     index_stats: dict
     triage: list = field(default_factory=list)  # Gemini の仕分け（triage.TriageItem）
+    web_hits: list = field(default_factory=list)  # Web照合の一致（websearch.WebHit）
 
 
 def _exclusions(text: str, options: CheckOptions) -> list[tuple[int, int, str]]:
@@ -111,6 +121,61 @@ def _scope_tokens(all_tokens: Tokens, spans) -> Tokens:
         b = bisect_left(all_tokens.starts, e)
         excluded[a:b] = b"\x01" * (b - a)
     return all_tokens.subset([i for i, x in enumerate(excluded) if not x])
+
+
+def _load_allowed(paths, store: Store) -> tuple[set[int], set[int], list[str]]:
+    """許可済みの文書の指紋と、照合先に登録されている同じファイルの文書IDを返す。"""
+    hashes, doc_ids, notices = set(), set(), []
+    for path in map(Path, paths):
+        found = {h for h, _ in shingle_hashes(tokenize(extract_document(path).text))}
+        if not found:
+            notices.append(f"許可済みの文書「{path.name}」から文章を抽出できませんでした。スキャンPDFの場合はOCRが必要です。")
+        hashes |= found
+        doc_id = store.id_for_ext(f"sha256:{sha256_file(path)}")
+        if doc_id is not None:
+            doc_ids.add(doc_id)
+    return hashes, doc_ids, notices
+
+
+def _subtract(start: int, end: int, spans) -> list[tuple[int, int]]:
+    pieces = []
+    for s, e, _ in spans:
+        if e <= start or s >= end:
+            continue
+        if s > start:
+            pieces.append((start, s))
+        start = max(start, e)
+    if start < end:
+        pieces.append((start, end))
+    return pieces
+
+
+def _allowed_spans(q: Tokens, allowed: set[int], min_weight: int, excluded_spans) -> list[tuple[int, int, str]]:
+    """許可済みの文書と最小語数以上つながって一致する範囲。既存の除外範囲とは重ねない。"""
+    prefix = [0, *accumulate(q.weights)]
+    covered = bytearray(len(q))
+    for h, i in shingle_hashes(q):
+        if h in allowed:
+            j = bisect_left(prefix, prefix[i] + SHINGLE_WEIGHT)
+            covered[i:j] = b"" * (j - i)
+    spans = []
+    i, n = 0, len(q)
+    while i < n:
+        if not covered[i]:
+            i += 1
+            continue
+        j = i
+        while j < n and covered[j]:
+            j += 1
+        if prefix[j] - prefix[i] >= min_weight:
+            spans += [(s, e, ALLOWED_LABEL) for s, e in _subtract(q.starts[i], q.ends[j - 1], excluded_spans)]
+        i = j
+    return spans
+
+
+def _from_allowed(text: str, allowed: set[int]) -> bool:
+    hashes = [h for h, _ in shingle_hashes(tokenize(text))]
+    return bool(hashes) and sum(h in allowed for h in hashes) / len(hashes) >= ALLOWED_SHARE
 
 
 def _owned_spans(q: Tokens, owner: list[int]) -> list[tuple[int, int, int]]:
@@ -138,10 +203,25 @@ def check_document(path: str | Path, store: Store, options: CheckOptions | None 
     excluded_spans = _exclusions(text, options)
     all_tokens = tokenize(text)
     q = _scope_tokens(all_tokens, excluded_spans)
+    allowed_hashes, allowed_ids = set(), set()
+    if options.allowed_paths:
+        allowed_hashes, allowed_ids, allowed_notices = _load_allowed(options.allowed_paths, store)
+        notices += allowed_notices
+        allowed = _allowed_spans(q, allowed_hashes, options.min_words * WORD_WEIGHT, excluded_spans)
+        if allowed:
+            before = sum(q.weights)
+            excluded_spans = sorted(excluded_spans + allowed)
+            q = _scope_tokens(all_tokens, excluded_spans)
+            notices.append(f"許可済みの文書と一致する {(before - sum(q.weights)) / WORD_WEIGHT:,.0f} 語を確認対象から除きました。")
+        elif allowed_hashes:
+            notices.append("許可済みの文書と一致する箇所はありませんでした。")
     total_weight = sum(q.weights)
     all_weight = sum(all_tokens.weights)
     if not total_weight:
-        notices.append("文章を抽出できませんでした。スキャンPDFの場合はOCRが必要です。")
+        notices.append(
+            "すべてが除外範囲に入ったため、確認する文章がありません。" if all_weight
+            else "文章を抽出できませんでした。スキャンPDFの場合はOCRが必要です。"
+        )
 
     # 照合先に原稿自身が登録されていると100%一致になるので除外する
     excluded_ids = set()
@@ -149,6 +229,9 @@ def check_document(path: str | Path, store: Store, options: CheckOptions | None 
     if self_id is not None:
         excluded_ids.add(self_id)
         notices.append("同じファイルが照合先に登録されていたため、そのファイルは除外しました。")
+    if allowed_ids - excluded_ids:
+        notices.append("許可済みの文書と同じファイルが照合先に登録されていたため、そのファイルは除外しました。")
+    excluded_ids |= allowed_ids
     for ext_id in options.exclude_ext_ids:
         doc_id = store.id_for_ext(ext_id.strip())
         if doc_id is not None:
@@ -231,12 +314,26 @@ def check_document(path: str | Path, store: Store, options: CheckOptions | None 
         )
 
     semantic_hits = []
+    covered = [owner[i] >= 0 or bool(common_tokens[i]) for i in range(len(q))]
     if options.use_semantic:
         if SemanticIndex.exists():
-            covered = [owner[i] >= 0 or bool(common_tokens[i]) for i in range(len(q))]
             semantic_hits = _semantic_pass(text, q, covered, store, excluded_ids, options, notices)
+            if allowed_hashes:
+                # 出典の文が許可済みの文書と同じなら、許可済みの文書を言い換えただけとみなす
+                kept = [h for h in semantic_hits if not _from_allowed(h.doc.text[h.s_start:h.s_end], allowed_hashes)]
+                if len(kept) < len(semantic_hits):
+                    notices.append(f"許可済みの文書に由来する言い換えの候補 {len(semantic_hits) - len(kept)} 件を除きました。")
+                semantic_hits = kept
         else:
             notices.append("言い換え検索の索引が未作成のため、言い換えの確認は行っていません。")
+
+    web_hits = []
+    if options.use_web:
+        # 言い換えの候補になった文は出典が分かっているので、検索の回数を減らすために除く
+        targets = target_sentences(
+            text, q, covered, options.min_words * WORD_WEIGHT, [(h.q_start, h.q_end) for h in semantic_hits]
+        )
+        web_hits = web_pass(text, targets, options.min_words * WORD_WEIGHT, notices, options.web_max_queries)
 
     integrity_flags, integrity_notices = check_integrity(text)
     notices += integrity_notices
@@ -264,6 +361,7 @@ def check_document(path: str | Path, store: Store, options: CheckOptions | None 
         notices=notices,
         options=options,
         index_stats=store.stats(),
+        web_hits=web_hits,
     )
 
 

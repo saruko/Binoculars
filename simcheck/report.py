@@ -9,7 +9,7 @@ _DETAIL_LIMIT = 3000
 
 _STYLE = """
 <style>
-.simcheck{--ink:#1f2933;--muted:#5f6c7b;--line:#d9dee5;--card:#f7f8fa;--bg:#fff;--semantic:#b45309;
+.simcheck{--ink:#1f2933;--muted:#5f6c7b;--line:#d9dee5;--card:#f7f8fa;--bg:#fff;--semantic:#b45309;--web:#7c3aed;
   color:var(--ink);background:var(--bg);font-family:"Segoe UI","Yu Gothic UI",Meiryo,sans-serif;font-size:14px;line-height:1.6;padding:16px;border-radius:8px}
 .simcheck h2{font-size:17px;margin:22px 0 8px;color:var(--ink)}
 .simcheck .cards{display:flex;flex-wrap:wrap;gap:10px}
@@ -26,6 +26,7 @@ _STYLE = """
 .simcheck sup.n{font-size:10px;font-weight:700;margin-right:2px;color:#1f2933}
 .simcheck .ex{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--line)}
 .simcheck .para{border-bottom:2px dotted var(--semantic)}
+.simcheck .web{border-bottom:2px solid var(--web)}
 .simcheck .page{display:block;color:var(--muted);font-size:11px;text-align:center;border-top:1px dashed var(--line);margin:8px 0}
 .simcheck details{border:1px solid var(--line);border-radius:6px;margin:6px 0;padding:6px 10px}
 .simcheck summary{cursor:pointer}
@@ -82,6 +83,11 @@ def _source_title_html(doc) -> str:
     return title + badges
 
 
+def _safe_url(url: str) -> str | None:
+    # 検索結果のURLは外部から来るので、http と https 以外はリンクにしない
+    return url if url.startswith(("https://", "http://")) else None
+
+
 def _page_of(text: str, position: int) -> int:
     return text.count("\f", 0, position) + 1
 
@@ -94,20 +100,22 @@ def _render_document(report: Report) -> str:
     for s, e, _ in report.excluded_spans:
         events.append((s, e, "ex", None))
     # 同じ開始位置なら一致のハイライトを優先する
-    priority = {"own": 0, "ex": 1, "para": 2}
+    priority = {"own": 0, "ex": 1, "para": 2, "web": 3}
     events.sort(key=lambda ev: (ev[0], priority[ev[2]]))
     # 言い換えの文に一致や除外が含まれていても隠さないよう、残りの部分にだけ点線を引く
     solid = list(events)
-    for hit in report.semantic_hits:
-        at = hit.q_start
+    marked = [(h.q_start, h.q_end, "para") for h in report.semantic_hits]
+    marked += [(h.q_start, h.q_end, "web") for h in report.web_hits]
+    for start, end, kind in marked:
+        at = start
         for s, e, _, _ in solid:
-            if s >= hit.q_end:
+            if s >= end:
                 break
             if s > at:
-                events.append((at, s, "para", None))
+                events.append((at, s, kind, None))
             at = max(at, e)
-        if at < hit.q_end:
-            events.append((at, hit.q_end, "para", None))
+        if at < end:
+            events.append((at, end, kind, None))
     events.sort(key=lambda ev: (ev[0], priority[ev[2]]))
 
     parts, pos = [], 0
@@ -125,6 +133,8 @@ def _render_document(report: Report) -> str:
             parts.append(f'<mark style="background:{_color(rank)}"><sup class="n">{rank + 1}</sup>{body}</mark>')
         elif kind == "ex":
             parts.append(f'<span class="ex">{body}</span>')
+        elif kind == "web":
+            parts.append(f'<span class="web">{body}</span>')
         else:
             parts.append(f'<span class="para">{body}</span>')
         pos = e
@@ -145,6 +155,7 @@ def render_html(report: Report, standalone: bool = False) -> str:
         (f"{report.words_checked:,.0f}", "確認対象の語数"),
         (f"{report.words_excluded:,.0f}", "除外した語数"),
         (f"{len(report.semantic_hits)}", "言い換えの疑い"),
+        *([(f"{len(report.web_hits)}", "Webで一致")] if report.options.use_web else []),
         (f"{len(report.flags)}", "フラッグ"),
     ):
         body.append(f'<div class="card"><b>{value}</b><span>{label}</span></div>')
@@ -196,7 +207,9 @@ def render_html(report: Report, standalone: bool = False) -> str:
 
     body.append("<h2>原稿のハイライト</h2>")
     body.append(
-        "<small>色付き=出典との一致(番号は出典の#) / 取り消し線=除外範囲 / 点線=言い換えの疑い(類似度には含みません)</small>"
+        "<small>色付き=出典との一致(番号は出典の#) / 取り消し線=除外範囲 / 点線=言い換えの疑い"
+        + (" / 紫の下線=Webで一致(点線と紫の下線は類似度には含みません)</small>" if report.options.use_web
+           else "(類似度には含みません)</small>")
     )
     body.append(f'<div class="doc">{_render_document(report)}</div>')
 
@@ -245,6 +258,25 @@ def render_html(report: Report, standalone: bool = False) -> str:
                 f"<div><h4>原稿</h4>{_e(_clip(report.text[hit.q_start:hit.q_end]))}</div>"
                 f"<div><h4>出典 p.{_page_of(hit.doc.text, hit.s_start)}</h4>{_e(_clip(hit.doc.text[hit.s_start:hit.s_end]))}</div>"
                 "</div></details>"
+            )
+
+    if report.web_hits:
+        body.append("<h2>Webで見つかった一致</h2>")
+        body.append(
+            "<small>検索結果の題名と抜粋に同じ語の並びがあった文です。類似度には含めていません。"
+            "引用元の可能性も、原稿を写したページの可能性もあるので、リンク先で確認してください。</small>"
+        )
+        for hit in report.web_hits:
+            items = []
+            for result in hit.results:
+                title = _e(result.title or result.url)
+                url = _safe_url(result.url)
+                link = f'<a href="{_e(url)}" target="_blank" rel="noreferrer">{title}</a>' if url else title
+                items.append(f"<li>{link}<br><small>{_e(_clip(result.snippet))}</small></li>")
+            body.append(
+                f"<details><summary>{hit.words:.0f}語が一致 · 原稿 p.{_page_of(report.text, hit.q_start)} · "
+                f"{_e(_clip(report.text[hit.q_start:hit.q_end])[:80])}</summary>"
+                f"<p>{_e(_clip(report.text[hit.q_start:hit.q_end]))}</p><ul>{''.join(items)}</ul></details>"
             )
 
     body.append("</div>")

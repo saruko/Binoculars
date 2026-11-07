@@ -8,3 +8,4 @@ httpx
 pytest
 fonttools
 numpy
+charset-normalizer

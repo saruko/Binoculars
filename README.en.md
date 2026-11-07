@@ -16,17 +16,17 @@ The web UI and the documents linked from this page are in Japanese.
 
 | Feature | Description | Where to use it |
 |---|---|---|
-| Similarity check | Compares a document with PubMed abstracts, PMC full texts (CC-licensed only), and your own PDFs, and reports the matches in PDF and HTML | Similarity tab (「類似度チェック」), `check` command, GitHub Actions |
+| Similarity check | Compares a document with PubMed abstracts, PMC full texts (CC-licensed only), and your own PDFs, and reports the matches in PDF and HTML. Optionally also searches the web | Similarity tab (「類似度チェック」), `check` command, GitHub Actions |
 | Paraphrase candidates | Lists sentences that may be reworded, using sentence embeddings and reranking. They are not included in the similarity value | Similarity tab, `check` command |
 | Flags | Shows tortured phrases, citations of retracted papers, character manipulation, rendered-versus-extracted text mismatch, and citation overlap | Same as above |
 | Revision suggestions | An LLM suggests how to handle each matched sentence and drafts revisions, which are then checked mechanically. By default, the LLM runs on your computer | Revision tab (「修正案」) |
 | Binoculars score | Calculates a score for a text. It does not determine whether AI was used | Score tab (「Binocularsスコア」) |
 
-Manuscript content leaves your computer only if you choose an external API or GitHub Actions (see [Data handling](#data-handling)).
+Manuscript content leaves your computer only if you choose an external API (including the web search) or GitHub Actions (see [Data handling](#data-handling)).
 
 ## Requirements
 - Windows and Python 3.14. `start.bat` installs PyTorch for CUDA 13.2.
-- Word is used to create the manuscript pages for DOCX files (the tool works without it, but [pages and lines will not match the manuscript](#reports)).
+- Word is used to create the manuscript pages for DOCX, DOC, RTF and ODT files and to read DOC, RTF and ODT files. Without Word, LibreOffice is used. Without either, DOC, RTF and ODT files cannot be read, and [pages and lines of DOCX files will not match the manuscript](#reports).
 - The full sources need about 100 GB of disk space. The baseline download takes about another 52 GB.
 
 The measurements in this repository were made on a PC with 64 GB of memory and 16 GB of GPU memory (GeForce RTX 5080).
@@ -119,7 +119,7 @@ By default, the paraphrase search covers only your PDFs and the PubMed abstracts
 **`--add-pmc` replaces the default index in `data/simcheck/semantic_pubmed/`.** To keep the current index, copy the whole folder first. For details, see the [evaluation results](evaluation/detection/results.md).
 
 ## Similarity check
-Use the similarity tab or the following command. PDF, DOCX, and TXT files can be checked.
+Use the similarity tab or the following command. PDF, DOCX, and TXT files can be checked, as well as DOC, RTF and ODT files (converted to DOCX with Word or LibreOffice). The encoding of TXT files is detected automatically.
 
 ```bash
 venv\Scripts\python.exe -m simcheck check "document"
@@ -136,9 +136,27 @@ venv\Scripts\python.exe -m simcheck check "document"
 | Also check paraphrases | `--no-semantic` to turn off | On |
 | Paraphrase threshold | `--semantic-threshold` | 0.85 |
 | Source IDs to exclude | `--exclude-id` (can be repeated) | None |
+| Allowed documents | `--allowed-doc` (can be repeated) | None |
+| Web search | `--web` | Off |
+| Not available | `--web-max-queries` | 300 sentences |
 | Not available | `--triage` | Off |
 
-`--triage` uses Gemini to sort the matches into stock phrases and passages to review. **The matched manuscript text and the source titles are sent to Google.** If the environment variable `GEMINI_API_KEY` is not set, no sorting is done.
+`--triage` uses Gemini to sort the matches into stock phrases and passages to review. **The matched manuscript text and the source titles are sent to Google.** If the API key `GEMINI_API_KEY` ([API keys](#api-keys)) is not set, no sorting is done.
+
+Allowed documents are documents that the manuscript may match, such as your own preprint, trial protocol or conference abstract (in the same formats as the checked document).
+- Text that matches an allowed document for at least the minimum match length is removed from both the matches and the denominator. It is removed whichever source it matches, so you do not need to list each source ID when the same document is registered in several places.
+- If the same file is registered in the corpus, that file is also excluded. Paraphrase candidates whose source sentence is the same as the allowed document are also removed.
+- **If an allowed document reuses text from other publications, that text is not checked either.** Specify only your own documents.
+
+### Web search
+Sentences that did not match the sources are searched one by one as exact phrases with the Brave Search API. This looks for text reused from web pages that are not in the sources (Wikipedia, society and company sites, blogs, and so on), and it is off by default. Select web search in the similarity tab, or add `--web`.
+
+- **The manuscript sentences are sent to Brave.** Before using it, check whether an unpublished manuscript may be sent, how Brave handles data, and what the target journal allows.
+- Get the API key `BRAVE_API_KEY` from the [Brave Search API](https://brave.com/search/api/) and set it as described in [API keys](#api-keys). Each search uses your quota.
+- Sentences of at least the minimum match length are searched if less than half of them is covered by matches with the sources or by excluded ranges. Sentences that are paraphrase candidates are skipped. Up to 300 sentences are searched per check by default. Searches run about once per second, so 300 sentences take about five minutes.
+- The query is the first 30 words or so of the sentence (about 75 characters for Japanese). A result counts as a match only if its title and excerpt contain the same word sequence for at least the minimum match length (or the whole sentence if it is shorter). Sentences that match more than 10 results are treated as common expressions and are not listed.
+- Web matches are not included in the similarity value. Only the excerpts are compared, so a sentence that is not found may still be on the web. Subscription article text rarely appears in search results. The detection rate has not been measured.
+- Search results are kept in `data/simcheck/web_cache.sqlite` for 7 days, and the same sentence is not searched again. Do not share this file, because it contains manuscript sentences.
 
 ### Reports
 The command saves reports in `data/simcheck/reports/` (use `--out` to change this).
@@ -149,7 +167,7 @@ The command saves reports in `data/simcheck/reports/` (use `--out` to change thi
 
 ### Reading the results
 - The similarity value is the number of matched words divided by the number of words checked. For Japanese, 2.5 characters count as 1 word.
-- **Matches with documents outside the sources cannot be detected.** A low value does not prove that there is no plagiarism.
+- **Matches with documents outside the sources cannot be detected.** A low value does not prove that there is no plagiarism. The web search can only check what appears in search result excerpts.
 - Commercial services use different databases and calculations, so their values cannot be compared with these. The result from a journal's check may differ.
 - Stock phrases alone can produce a value when no text was reused, and the value rises with the size of the sources. With the full PubMed baseline and newly written AI text as a control, long texts (848 words on average) had a mean of 8.0% and a maximum of 15.2%, and abstract-length texts (296 words on average) had a mean of 14.2% and a maximum of 37.1%. In short texts, one matched sentence can change the value greatly, so check the matched passages rather than relying on the value alone.
 - The default minimum match length is 8 words. At 7 words or fewer, matches on stock phrases increase sharply.
@@ -157,7 +175,7 @@ The command saves reports in `data/simcheck/reports/` (use `--out` to change thi
 - Lowering the threshold finds more, but in real papers it also lists many unrelated sentences from the same field.
 
 ### How detection works
-1. Extracts the text from a PDF, DOCX, or TXT file and determines the ranges to exclude, such as references and quotations.
+1. Extracts the text from a PDF, DOCX, or TXT file (DOC, RTF and ODT files are converted to DOCX) and determines the ranges to exclude, such as references and quotations.
 2. Normalizes characters (full-width and half-width forms, ligatures, line-end hyphens, invisible characters, Cyrillic and Armenian letters that look like Latin ones, Greek letters mixed into Latin words, and so on), then splits English into words and Japanese into characters.
 3. Finds candidate documents with fingerprints (winnowing), then aligns tokens to locate the matches. Candidates are the top documents overall, the top documents for every 100 words of the manuscript, and documents that share a fingerprint found in 30 documents or fewer. A continuous match of 10 or more words always leaves a shared fingerprint, but on the full PubMed baseline the source may not become a candidate and the match is missed (about 5% at 10 words and about 20% at 8 words).
 4. A passage that matches several sources is counted once. If you choose to exclude common expressions, expressions shared by many documents are removed from both the matches and the denominator.
@@ -195,8 +213,8 @@ For each matched sentence, the tool suggests how to handle it (add a citation, q
 | LM Studio | `http://127.0.0.1:1234/v1` | Load a model and start the server |
 | Strata (Qwen3.8-Flash-Next and others) | `http://127.0.0.1:8080/v1` | Start it with `strata launch`. If you set a key, also set `STRATA_API_KEY` |
 | llama.cpp | `http://127.0.0.1:9931/v1` | Start `llama-server`. If the port differs, change the URL too. If you set a key, also set `LLAMA_API_KEY` |
-| Gemini API (sends data externally) | Fixed | Set the environment variable `GEMINI_API_KEY`. The default model is `gemini-3.8-flash` |
-| Claude API (sends data externally) | Fixed | Set the environment variable `ANTHROPIC_API_KEY`. The default model is `claude-opus-5-5`, and usage is billed |
+| Gemini API (sends data externally) | Fixed | Set `GEMINI_API_KEY`. The default model is `gemini-3.8-flash` |
+| Claude API (sends data externally) | Fixed | Set `ANTHROPIC_API_KEY`. The default model is `claude-opus-5-5`, and usage is billed |
 
 - The intended local LLMs are Gemma 4, Qwen3.5, DeepSeek, Qwen3.8-Flash-Next, and similar models. Quality has been checked only for the model described in the [evaluation results](evaluation/revise/results.md).
 - Only the LM Studio connection has been tried on a real server. Strata, llama.cpp, the Gemini API, and the Claude API have only been tested against simulated responses.
@@ -206,7 +224,7 @@ For each matched sentence, the tool suggests how to handle it (add a citation, q
 
 - An external API is used only when you select it and tick the box that agrees to sending.
 - When the source is a local PDF, only its title is passed, not the excerpt, so that subscription text is not sent. Suggestions for those sentences may be weaker.
-- API keys are read from environment variables and are not entered on screen. The URLs of external APIs cannot be changed.
+- See [API keys](#api-keys) for how to set the keys. The URLs of external APIs cannot be changed.
 - A local provider cannot be pointed at a URL outside this computer.
 - The Claude API request uses `fallbacks`, which retries on another model if a safety classifier declines the request.
 
@@ -263,12 +281,23 @@ All values apply to the conditions at the time of measurement and do not guarant
 | Revision suggestions | Quality checks of suggestions that passed | [results.md](evaluation/revise/results.md) |
 | Binoculars score | No usable threshold was found | [results.md](evaluation/ai_threshold/results.md) |
 
+## API keys
+Set the keys for external APIs as environment variables or in the API key tab (「APIキー」). Keys saved in the tab are stored per user in the Windows Credential Manager and are not shown on screen. If both are set, the environment variable is used. GitHub Actions uses only environment variables (secrets).
+
+| Name | Used for |
+|---|---|
+| `BRAVE_API_KEY` | Web search |
+| `GEMINI_API_KEY` | `--triage`, revision suggestions (Gemini API) |
+| `ANTHROPIC_API_KEY` | Revision suggestions (Claude API) |
+| `STRATA_API_KEY`, `LLAMA_API_KEY` | Revision suggestions (Strata, llama.cpp, if the server uses a key) |
+
 ## Data handling
 
 | What you use | What is sent out | Where |
 |---|---|---|
 | Similarity check (without `--triage`) | Nothing | — |
 | `check --triage` | Matched manuscript text and source titles | Google |
+| `check --web`, web search | The first 30 words or so of sentences that did not match the sources | Brave |
 | Revision suggestions (LM Studio, Strata, llama.cpp) | Nothing | — |
 | Revision suggestions (Gemini API, Claude API) | The manuscript sentence and its neighbours, and the source title and excerpt (excerpts from your PDFs are not sent) | Google, Anthropic |
 | GitHub Actions | The full manuscript, and the matched text if a Gemini key is set | GitHub, Google (see the [guide](docs/github-actions.md)) |
@@ -296,7 +325,7 @@ PubMed data is provided by the U.S. National Library of Medicine. This repositor
 
 | Location | Contents |
 |---|---|
-| `app.py` | Web UI (three tabs) and the Binoculars score calculation |
+| `app.py` | Web UI (four tabs) and the Binoculars score calculation |
 | `simcheck/` | The similarity check and revision suggestions. Run it with `python -m simcheck` |
 | `start.bat` | Sets up the environment and starts the tool |
 | `requirements.txt`, `constraints.txt` | Dependencies and their fixed versions |
@@ -317,7 +346,7 @@ The original Binoculars code is kept unchanged. This tool does not use it, and i
 | AI-generated text score | Uses Falcon-7B by default and classifies text as AI-generated or human-written with a fixed threshold | Same calculation (log PPL / log Cross-PPL), implemented in `app.py`. You can choose the models, and long documents are split every 512 tokens so that the whole text is evaluated. **It gives no classification** |
 | Similarity check, paraphrase candidates, flags, revision suggestions | None | Added |
 | Detection evaluation | See the paper | Added (methods and results in `evaluation/`) |
-| Interface | Gradio demo | Web UI with three tabs, and GitHub Actions workflows |
+| Interface | Gradio demo | Web UI with four tabs, and GitHub Actions workflows |
 
 ## Development
 

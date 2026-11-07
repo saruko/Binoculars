@@ -2,7 +2,6 @@
 import os
 import re
 import shutil
-import subprocess
 import tempfile
 from bisect import bisect_left
 from datetime import datetime
@@ -12,7 +11,8 @@ import pymupdf
 from rapidfuzz.distance import Levenshtein
 
 from .engine import Report
-from .extract import sha256_file
+from .extract import WORD_SUFFIXES, sha256_file
+from .office import soffice_convert, word_to_pdf
 from .report import _PALETTE, corpus_summary
 from .textnorm import WORD_WEIGHT, Tokens, tokenize
 from .triage import LABELS
@@ -20,7 +20,6 @@ from .triage import LABELS
 _FONT_DIR = Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts"
 _REGULAR = ("YuGothR.ttc", "meiryo.ttc", "msgothic.ttc")
 _BOLD = ("YuGothB.ttc", "meiryob.ttc", "msgothic.ttc")
-_WORD_TIMEOUT = 180
 # 文字位置が取れた語の割合がこれ未満なら、ハイライトの漏れを表紙に明記する
 _MIN_MAPPED = 0.9
 
@@ -44,6 +43,7 @@ _NOTE = _rgb("#dbeafe")
 _HIGHLIGHT = _rgb("#f87171")
 _EXCLUDED = _rgb("#9aa5b1")
 _SEMANTIC = _rgb("#b45309")
+_WEB = _rgb("#7c3aed")
 _KIND_COLORS = {"PubMed抄録": "#bfdbfe", "PMC全文": "#a5f3fc", "手元のPDF": "#bbf7d0", "プレプリント": "#ddd6fe"}
 _TRIAGE_COLORS = {"review": "#fecaca", "boilerplate": "#e2e8f0", None: "#fde68a"}
 _TRIAGE_ORDER = {"review": 0, None: 1, "boilerplate": 2}
@@ -121,38 +121,11 @@ class _Writer:
 
 
 def _word_to_pdf(path: Path, out: Path) -> bool:
-    # 開いている文書に触れないよう、作業用のコピーを別のWordで変換する。文書が残っていたらWordを閉じない
-    script = (
-        "$w = New-Object -ComObject Word.Application; $w.Visible = $false; $w.DisplayAlerts = 0; "
-        "try { $d = $w.Documents.Open($env:SIMCHECK_IN, $false, $true, $false); "
-        "$d.ExportAsFixedFormat($env:SIMCHECK_OUT, 17); $d.Close(0) } "
-        "finally { if ($w.Documents.Count -eq 0) { $w.Quit() } }"
-    )
-    env = {**os.environ, "SIMCHECK_IN": str(path), "SIMCHECK_OUT": str(out)}
-    try:
-        subprocess.run(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
-            env=env, capture_output=True, timeout=_WORD_TIMEOUT, check=True,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return False
-    return out.exists()
+    return word_to_pdf(path, out)
 
 
 def _soffice_to_pdf(path: Path) -> Path | None:
-    soffice = shutil.which("soffice") or shutil.which("libreoffice")
-    if not soffice:
-        return None
-    try:
-        subprocess.run(
-            [soffice, f"-env:UserInstallation={(path.parent / 'profile').as_uri()}", "--headless", "--norestore",
-             "--convert-to", "pdf", "--outdir", str(path.parent), str(path)],
-            capture_output=True, timeout=_WORD_TIMEOUT, check=True,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    out = path.with_suffix(".pdf")
-    return out if out.exists() else None
+    return soffice_convert(path, "pdf")
 
 
 def _typeset(text: str) -> pymupdf.Document:
@@ -176,14 +149,15 @@ def _open_base(path: Path, text: str) -> tuple[pymupdf.Document, list[str]]:
     suffix = path.suffix.lower()
     if suffix == ".pdf":
         return pymupdf.open(path), []
-    if suffix == ".docx":
+    if suffix in WORD_SUFFIXES:
         work = Path(tempfile.mkdtemp())
+        source = work / f"input{suffix}"
         try:
-            shutil.copy(path, work / "input.docx")
-            if _word_to_pdf(work / "input.docx", work / "output.pdf"):
+            shutil.copy(path, source)
+            if _word_to_pdf(source, work / "output.pdf"):
                 # 作業フォルダを消せるようにメモリへ読み込む
                 return pymupdf.open("pdf", (work / "output.pdf").read_bytes()), []
-            converted = _soffice_to_pdf(work / "input.docx")
+            converted = _soffice_to_pdf(source)
             if converted:
                 return pymupdf.open("pdf", converted.read_bytes()), [
                     "LibreOfficeで変換したため、原稿ページのページと行はWordでの表示と異なる場合があります。"
@@ -294,6 +268,8 @@ def _filters(report: Report) -> list[str]:
     filters.append(f"{options.min_words}語未満の一致")
     if options.exclude_ext_ids:
         filters.append(f"指定した出典 {len(options.exclude_ext_ids)} 件")
+    if options.allowed_paths:
+        filters.append(f"許可済みの文書 {len(options.allowed_paths)} 件との一致")
     return filters
 
 
@@ -513,6 +489,12 @@ def _manuscript(w: _Writer, report: Report, base: pymupdf.Document, locator: _Lo
             page.draw_line(placed.bl, placed.br, color=_SEMANTIC, width=0.9, dashes="[2 1.5] 0", overlay=True)
             if i == 0:
                 hit_pages[(hit.q_start, hit.q_end)] = page.number + 1
+    for hit in report.web_hits:
+        for i, (pno, rect) in enumerate(locator.rects(hit.q_start, hit.q_end)):
+            page, placed = place(pno, rect)
+            page.draw_line(placed.bl, placed.br, color=_WEB, width=0.9, overlay=True)
+            if i == 0:
+                hit_pages[(hit.q_start, hit.q_end)] = page.number + 1
 
     # 一致の始まる行の左余白に出典番号を出す
     slots: dict[tuple[int, int], list[int]] = {}
@@ -572,6 +554,48 @@ def _semantic_appendix(w: _Writer, report: Report, hit_pages: dict[tuple[int, in
         title = w.ellipsize(hit.doc.title or hit.doc.ext_id, 7.5, right - _CONTENT_X - 60)
         w.text(page, _CONTENT_X, y, f"{title} p.{hit.doc.text.count(chr(12), 0, hit.s_start) + 1}", 7.5, _MUTED)
         y += 6
+        w.rule(page, y)
+        y += 12
+
+
+def _web_appendix(w: _Writer, report: Report, hit_pages: dict[tuple[int, int], int]):
+    if not report.web_hits:
+        return
+    page = w.new_page("Webで見つかった一致")
+    right = page.rect.width - _CONTENT_X
+    bottom = page.rect.height - _CONTENT_BOTTOM
+    y = _CONTENT_TOP + 8
+    w.text(page, _CONTENT_X, y, "Webで見つかった一致", 11, bold=True)
+    y += 15
+    y = w.paragraph(
+        page, _CONTENT_X, y,
+        "検索結果の題名と抜粋に同じ語の並びがあった文で、類似度には含めていません。"
+        "引用元の可能性も、原稿を写したページの可能性もあるので、リンク先で確認してください。原稿ページでは紫の下線で示しています。",
+        right - _CONTENT_X, 8, _MUTED,
+    )
+    y += 10
+    for hit in report.web_hits:
+        lines = w.wrap(report.text[hit.q_start:hit.q_end], 8.5, right - _CONTENT_X)
+        if y + 28 + (len(lines) + len(hit.results)) * 13 > bottom:
+            page = w.new_page()
+            y = _CONTENT_TOP
+        where = hit_pages.get((hit.q_start, hit.q_end))
+        location = f"{where} ページ · " if where else ""
+        w.text(page, _CONTENT_X, y, f"{location}{hit.words:.0f}語が一致", 8, bold=True)
+        y += 13
+        for line in lines:
+            w.text(page, _CONTENT_X, y, line, 8.5)
+            y += 13
+        for result in hit.results:
+            label = w.ellipsize(f"{result.title} — {result.url}", 7.5, right - _CONTENT_X)
+            w.text(page, _CONTENT_X, y, label, 7.5, _MUTED)
+            if result.url.startswith(("https://", "http://")):
+                page.insert_link({
+                    "kind": pymupdf.LINK_URI, "uri": result.url,
+                    "from": pymupdf.Rect(_CONTENT_X, y - 8, _CONTENT_X + w.width(label, 7.5), y + 2),
+                })
+            y += 11
+        y += 2
         w.rule(page, y)
         y += 12
 
@@ -650,6 +674,7 @@ def render_pdf(report: Report, path: str | Path) -> bytes:
     first_manuscript_page = doc.page_count
     hit_pages = _manuscript(writer, report, base, locator, source_pages)
     _semantic_appendix(writer, report, hit_pages)
+    _web_appendix(writer, report, hit_pages)
     _triage_appendix(writer, report, locator, first_manuscript_page)
     _stamp_headers(writer, check_id)
     doc.set_metadata({"title": f"類似度レポート: {report.file_name}", "creator": "Binoculars"})

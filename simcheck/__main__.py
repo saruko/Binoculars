@@ -18,6 +18,7 @@ from .semantic import (
 )
 from .store import Store
 from .triage import triage_report
+from .websearch import DEFAULT_MAX_QUERIES
 
 
 def main():
@@ -67,7 +68,11 @@ def main():
     p.add_argument("--min-words", type=int, default=8)
     p.add_argument("--no-semantic", action="store_true")
     p.add_argument("--exclude-id", action="append", default=[], help="除外する出典ID（複数指定可）")
+    p.add_argument("--allowed-doc", action="append", default=[], metavar="ファイル",
+                   help="一致してよい文書（自分のプレプリントなど）。一致する部分を確認対象から除く（複数指定可）")
     p.add_argument("--triage", action="store_true", help="一致箇所を Gemini で仕分ける（原稿の一致箇所を外部に送信）")
+    p.add_argument("--web", action="store_true", help="照合先と一致しなかった文を Brave Search API で検索する（原稿の文を外部に送信）")
+    p.add_argument("--web-max-queries", type=int, default=DEFAULT_MAX_QUERIES, help="Web照合で検索する文の数の上限")
 
     args = parser.parse_args()
     with Store() as store:
@@ -127,6 +132,9 @@ def main():
                 use_semantic=not args.no_semantic,
                 semantic_threshold=args.semantic_threshold,
                 exclude_ext_ids=set(args.exclude_id),
+                allowed_paths=args.allowed_doc,
+                use_web=args.web,
+                web_max_queries=args.web_max_queries,
             )
             report = check_document(args.file, store, options)
             if args.triage:
@@ -136,7 +144,11 @@ def main():
             out = Path(args.out) if args.out else DATA_DIR / "reports" / f"{Path(args.file).stem}_report.html"
             write_html(report, out)
             pdf = write_pdf(report, args.file, out.with_suffix(".pdf"))
-            print(f"類似度 {report.score * 100:.1f}% / 出典 {len(report.sources)} 件 / 言い換え候補 {len(report.semantic_hits)} 件")
+            web = f" / Webで一致 {len(report.web_hits)} 件" if args.web else ""
+            print(f"類似度 {report.score * 100:.1f}% / 出典 {len(report.sources)} 件 / 言い換え候補 {len(report.semantic_hits)} 件{web}")
+            for notice in report.notices:
+                if notice.startswith("Web照合"):
+                    print(notice)
             print(f"レポート: {pdf}")
             print(f"詳細（出典の本文との比較）: {out}")
 

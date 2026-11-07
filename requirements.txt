@@ -13,3 +13,5 @@ anthropic
 pytest
 fonttools
 rapidocr
+keyring
+charset-normalizer

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .extract import SUPPORTED_SUFFIXES, extract_document, sha256_file
+from .extract import CONVERTED_SUFFIXES, SUPPORTED_SUFFIXES, extract_document, sha256_file
 from .sections import strip_references
 from .store import DocRow, Store, compress_text
 from .textnorm import fingerprints
@@ -40,7 +40,9 @@ def _process_pdf(path: str, sha: str):
 
 def add_library(store: Store, root: str | Path, workers: int | None = None, progress=print) -> dict:
     root = Path(root)
-    paths = [p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in SUPPORTED_SUFFIXES - {".md", ".txt"}]
+    # 並列に読み込むので、Word を起動する形式は対象にしない
+    suffixes = SUPPORTED_SUFFIXES - {".md", ".txt"} - CONVERTED_SUFFIXES
+    paths = [p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in suffixes]
     progress(f"{len(paths)} ファイルを確認します: {root}")
 
     jobs, duplicates = [], 0

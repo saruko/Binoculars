@@ -193,6 +193,88 @@ def test_common_phrase_is_excluded_from_score(tmp_path):
     assert any(label == "定型表現" for _, _, label in excluded.excluded_spans)
 
 
+NEW_TEXT = (
+    "We describe a filing system for the photographic archive of our clinic that has not been reported "
+    "before, and we explain how the nurses label each folder when a patient returns for review."
+)
+
+
+def write_allowed(tmp_path, text, name="preprint.txt"):
+    path = tmp_path / name
+    path.write_text(text, encoding="utf-8")
+    return str(path)
+
+
+def test_allowed_document_text_is_excluded(store, tmp_path):
+    allowed = write_allowed(tmp_path, f"Our preprint version. {SOURCE_EN}")
+    text = f"{NEW_TEXT} {SOURCE_EN}"
+    plain = run(store, tmp_path, text)
+    masked = run(store, tmp_path, text, allowed_paths=[allowed])
+    assert [x.doc.ext_id for x in plain.sources] == ["pmid:1"]
+    assert masked.sources == []
+    assert masked.score == 0
+    assert masked.words_checked < plain.words_checked
+    spans = [(s, e) for s, e, label in masked.excluded_spans if label == engine.ALLOWED_LABEL]
+    assert len(spans) == 1 and text[spans[0][0]:spans[0][1]] == SOURCE_EN.rstrip(".")
+    assert any("許可済みの文書と一致する" in n for n in masked.notices)
+
+
+def test_allowed_document_keeps_matches_outside_it(store, tmp_path):
+    words = SOURCE_EN.split()
+    allowed = write_allowed(tmp_path, " ".join(words[:20]))
+    report = run(store, tmp_path, SOURCE_EN, allowed_paths=[allowed])
+    assert [x.doc.ext_id for x in report.sources] == ["pmid:1"]
+    (s, e), = [(s, e) for s, e, label in report.excluded_spans if label == engine.ALLOWED_LABEL]
+    assert s == 0 and SOURCE_EN[s:e] == " ".join(words[:20])
+    assert all(m.q_start >= e for m in report.sources[0].matches)
+    assert report.score == pytest.approx(1.0)
+
+
+def test_allowed_overlap_shorter_than_min_words_is_kept(store, tmp_path):
+    allowed = write_allowed(tmp_path, "endothelial growth factor therapy has transformed the")
+    report = run(store, tmp_path, SOURCE_EN, allowed_paths=[allowed])
+    assert not any(label == engine.ALLOWED_LABEL for _, _, label in report.excluded_spans)
+    assert any("一致する箇所はありませんでした" in n for n in report.notices)
+
+
+def test_allowed_document_registered_in_corpus_is_excluded(store, tmp_path):
+    allowed = write_allowed(tmp_path, f"{NEW_TEXT} {UNRELATED}")
+    add_doc(store, f"sha256:{hashlib.sha256(Path(allowed).read_bytes()).hexdigest()}", f"{NEW_TEXT} {UNRELATED}")
+    report = run(store, tmp_path, f"{SOURCE_EN} {NEW_TEXT}", allowed_paths=[allowed])
+    assert [x.doc.ext_id for x in report.sources] == ["pmid:1"]
+    assert any("同じファイルが照合先に登録" in n for n in report.notices)
+
+
+def test_manuscript_equal_to_allowed_document_says_nothing_is_left(store, tmp_path):
+    allowed = write_allowed(tmp_path, SOURCE_EN)
+    report = run(store, tmp_path, SOURCE_EN, allowed_paths=[allowed])
+    assert report.words_checked == 0
+    assert any("すべてが除外範囲" in n for n in report.notices)
+    assert not any("スキャンPDF" in n for n in report.notices)
+
+
+def test_semantic_hits_from_allowed_document_are_dropped(store, tmp_path, monkeypatch):
+    docs = store.get_docs([store.id_for_ext("pmid:1"), store.id_for_ext("pmid:3")])
+    by_ext = {d.ext_id: d for d in docs.values()}
+
+    class FakeIndex:
+        @staticmethod
+        def exists():
+            return True
+
+    def fake_pass(text, *args):
+        return [engine.SemanticHit(0, len(text), d, 0, len(d.text), 0.9) for d in by_ext.values()]
+
+    monkeypatch.setattr(engine, "SemanticIndex", FakeIndex)
+    monkeypatch.setattr(engine, "_semantic_pass", fake_pass)
+    path = tmp_path / "manuscript.txt"
+    path.write_text(NEW_TEXT, encoding="utf-8")
+    allowed = write_allowed(tmp_path, SOURCE_EN)
+    report = check_document(path, store, CheckOptions(allowed_paths=[allowed]))
+    assert [h.doc.ext_id for h in report.semantic_hits] == ["pmid:3"]
+    assert any("言い換えの候補 1 件" in n for n in report.notices)
+
+
 def test_references_heading_early_in_long_doc_is_ignored():
     text = "References\n" + "body text. " * 300
     assert spans_of(text, "references") == []

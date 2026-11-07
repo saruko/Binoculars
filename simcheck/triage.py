@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 import httpx
 
+from . import apikeys
 from .engine import Report
 
 API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
@@ -105,9 +106,9 @@ def _classify(client: httpx.Client, url: str, key: str, items: list[dict]) -> di
 def triage_report(report: Report, api_key: str | None = None, model: str | None = None,
                   client: httpx.Client | None = None) -> tuple[list[TriageItem], list[str]]:
     """原稿の一致箇所と出典の題名だけを送る。出典の本文は購読誌の場合があるので送らない。"""
-    key = api_key or os.environ.get("GEMINI_API_KEY")
+    key = api_key or apikeys.get("GEMINI_API_KEY")
     if not key:
-        return [], ["GEMINI_API_KEY が未設定のため、一致箇所の仕分けは行っていません。"]
+        return [], ["APIキー（GEMINI_API_KEY）が未設定のため、一致箇所の仕分けは行っていません。"]
     groups = _groups(report)
     notices = []
     if len(groups) > MAX_GROUPS:
